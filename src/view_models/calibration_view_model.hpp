@@ -1,0 +1,43 @@
+#pragma once
+
+#include "models/calibration_model.hpp"
+#include "models/compass_model.hpp"
+#include "view_models/view_model.hpp"
+
+namespace compass {
+
+class CalibrationViewModel : public ViewModel {
+public:
+    CalibrationViewModel(CompassRouter& router, CalibrationModel& model, CompassModel& compass_model);
+
+    PageId pageId() const override
+    {
+        return PageId::Calibration;
+    }
+
+    void onEnter() override;
+    void onExit() override;
+    void onKey(uint32_t key) override;
+    void tick(uint32_t nowMs) override;
+
+    smooth_ui_toolkit::SingleObservable<CalibrationState>& state()
+    {
+        return _model.state();
+    }
+
+    smooth_ui_toolkit::SingleObservable<std::string>& status()
+    {
+        return _model.status();
+    }
+
+    smooth_ui_toolkit::SingleObservable<float>& progress()
+    {
+        return _model.progress();
+    }
+
+private:
+    CalibrationModel& _model;
+    CompassModel& _compass_model;
+};
+
+}  // namespace compass

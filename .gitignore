@@ -1,0 +1,8 @@
+build/
+dist/
+dependencies/
+.venv/
+__pycache__
+.DS_Store
+src/assets/res_c/image_*.c
+calibration.conf
