@@ -10,13 +10,13 @@ namespace compass {
 
 namespace {
 
-constexpr uint32_t kAutoFinishMs             = 20000;
+constexpr uint32_t kAutoFinishMs              = 20000;
 constexpr uint32_t kMinimumCalibrationSamples = 20;
-constexpr float kMinimumAxisSpan             = 0.01f;
-constexpr float kCoverageTarget              = 80.0f;
-constexpr const char* kCalibrationPathEnv    = "COMPASS_CALIBRATION_PATH";
-constexpr const char* kConfigDirEnv          = "COMPASS_CONFIG_DIR";
-constexpr const char* kCalibrationFileName   = "calibration.conf";
+constexpr float kMinimumAxisSpan              = 0.01f;
+constexpr float kCoverageTarget               = 80.0f;
+constexpr const char* kCalibrationPathEnv     = "COMPASS_CALIBRATION_PATH";
+constexpr const char* kConfigDirEnv           = "COMPASS_CONFIG_DIR";
+constexpr const char* kCalibrationFileName    = "calibration.conf";
 
 float axisValue(const Axis3& value, size_t index)
 {
@@ -66,6 +66,19 @@ bool envValue(const char* key, std::filesystem::path& path)
 
     path = value;
     return true;
+}
+
+std::filesystem::path defaultConfigDir()
+{
+#if COMPASS_USE_MOCK_IMU
+    return ".";
+#else
+    const char* home = std::getenv("HOME");
+    if (home && home[0] != '\0') {
+        return std::filesystem::path(home) / ".config" / "Compass";
+    }
+    return "/tmp/Compass";
+#endif
 }
 
 float configFloat(const std::unordered_map<std::string, std::string>& values, const char* key, float fallback)
@@ -182,7 +195,7 @@ std::filesystem::path CalibrationModel::configPath()
 #if COMPASS_USE_MOCK_IMU
     return kCalibrationFileName;
 #else
-    return std::filesystem::path("/var/lib/Compass") / kCalibrationFileName;
+    return defaultConfigDir() / kCalibrationFileName;
 #endif
 }
 
