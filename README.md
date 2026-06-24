@@ -97,8 +97,7 @@ Run the SDL build:
 ```
 
 Calibration data is saved to `calibration.conf` for SDL builds. Packaged
-CardputerZero launches set `COMPASS_CONFIG_DIR="$HOME/.config/Compass"`, so
-calibration data is saved to `$HOME/.config/Compass/calibration.conf`.
+CardputerZero launches use `$HOME/.config/Compass/calibration.conf` by default.
 
 Override the calibration path:
 
@@ -126,5 +125,5 @@ build and produces an `arm64` APPLaunch package.
 The generated package is written to `dist/`:
 
 ```text
-dist/m5cardputerzero-compass_0.1.0_m5stack1_arm64.deb
+dist/m5cardputerzero-compass_0.1.1_m5stack1_arm64.deb
 ```
