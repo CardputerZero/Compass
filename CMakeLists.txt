@@ -31,8 +31,25 @@ if(APPLE)
     list(APPEND CMAKE_PREFIX_PATH "/opt/homebrew" "/usr/local")
 endif()
 
-if(NOT DEFINED Python3_EXECUTABLE AND EXISTS "${COMPASS_ROOT}/.venv/bin/python")
-    set(Python3_EXECUTABLE "${COMPASS_ROOT}/.venv/bin/python")
+if(NOT DEFINED Python3_EXECUTABLE)
+    foreach(candidate IN ITEMS
+        "${COMPASS_ROOT}/.venv/bin/python"
+        "${COMPASS_ROOT}/../.venv/bin/python"
+        "${COMPASS_ROOT}/../../.venv/bin/python"
+    )
+        if(EXISTS "${candidate}")
+            execute_process(
+                COMMAND "${candidate}" -m pip --version
+                RESULT_VARIABLE COMPASS_PYTHON_PIP_RESULT
+                OUTPUT_QUIET
+                ERROR_QUIET
+            )
+            if(COMPASS_PYTHON_PIP_RESULT EQUAL 0)
+                set(Python3_EXECUTABLE "${candidate}")
+                break()
+            endif()
+        endif()
+    endforeach()
 endif()
 
 foreach(required_dir IN LISTS COMPASS_LVGL_DIR COMPASS_SPDLOG_DIR COMPASS_SMOOTH_UI_DIR)
@@ -71,6 +88,24 @@ add_subdirectory("${COMPASS_LVGL_DIR}" EXCLUDE_FROM_ALL)
 add_subdirectory("${COMPASS_SPDLOG_DIR}" EXCLUDE_FROM_ALL)
 add_subdirectory("${COMPASS_SMOOTH_UI_DIR}" EXCLUDE_FROM_ALL)
 
+function(compass_add_sdl2_parent_include target imported_target)
+    if(NOT TARGET "${imported_target}")
+        return()
+    endif()
+
+    get_target_property(sdl2_include_dirs "${imported_target}" INTERFACE_INCLUDE_DIRECTORIES)
+    if(NOT sdl2_include_dirs)
+        return()
+    endif()
+
+    foreach(sdl2_include_dir IN LISTS sdl2_include_dirs)
+        if(sdl2_include_dir MATCHES "/SDL2$")
+            get_filename_component(sdl2_parent_include_dir "${sdl2_include_dir}" DIRECTORY)
+            target_include_directories("${target}" SYSTEM PRIVATE "${sdl2_parent_include_dir}")
+        endif()
+    endforeach()
+endfunction()
+
 set(COMPASS_LVGL_POSIX_PATH "./")
 if(NOT COMPASS_USE_SDL)
     set(COMPASS_LVGL_POSIX_PATH "/usr/share/Compass/")
@@ -89,15 +124,23 @@ if(COMPASS_USE_SDL)
 
     if(SDL2_FOUND)
         target_link_libraries(lvgl PRIVATE PkgConfig::SDL2)
+        compass_add_sdl2_parent_include(lvgl PkgConfig::SDL2)
         set(COMPASS_SDL_LIBS PkgConfig::SDL2)
     else()
         find_package(SDL2 CONFIG QUIET)
         if(TARGET SDL2::SDL2)
             target_link_libraries(lvgl PRIVATE SDL2::SDL2)
+            compass_add_sdl2_parent_include(lvgl SDL2::SDL2)
             set(COMPASS_SDL_LIBS SDL2::SDL2)
         else()
             find_package(SDL2 REQUIRED)
             target_include_directories(lvgl SYSTEM PRIVATE ${SDL2_INCLUDE_DIRS})
+            foreach(sdl2_include_dir IN LISTS SDL2_INCLUDE_DIRS)
+                if(sdl2_include_dir MATCHES "/SDL2$")
+                    get_filename_component(sdl2_parent_include_dir "${sdl2_include_dir}" DIRECTORY)
+                    target_include_directories(lvgl SYSTEM PRIVATE "${sdl2_parent_include_dir}")
+                endif()
+            endforeach()
             set(COMPASS_SDL_LIBS ${SDL2_LIBRARIES})
         endif()
     endif()
