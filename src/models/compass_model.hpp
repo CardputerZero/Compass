@@ -1,17 +1,12 @@
 #pragma once
 
+#include "models/compass_pose.hpp"
 #include <tools/observable/single_observable.hpp>
 #include <cstdint>
 #include <memory>
 #include <string>
 
 namespace compass {
-
-struct Axis3 {
-    float x = 0.0f;
-    float y = 0.0f;
-    float z = 0.0f;
-};
 
 enum class CompassDataSource {
     Mock,
@@ -27,6 +22,7 @@ struct CompassSample {
     float rollDeg    = 0.0f;
     float bubbleX    = 0.0f;
     float bubbleY    = 0.0f;
+    // UI-facing vectors use screen coordinates; rawMag remains in the BMM150 sensor frame for calibration.
     Axis3 accel;
     Axis3 gyro;
     Axis3 mag;

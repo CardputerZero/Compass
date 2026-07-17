@@ -16,9 +16,7 @@ namespace {
 
 constexpr uint32_t kSampleIntervalMs = 33;
 constexpr float kPi                  = 3.14159265359f;
-constexpr float kRadToDeg            = 180.0f / kPi;
 constexpr float kDegToRad            = kPi / 180.0f;
-constexpr float kBubbleTiltRangeDeg  = 18.0f;
 
 constexpr const char* kBmi270I2cSysfsRoot     = "/sys/bus/i2c/devices";
 constexpr const char* kBmi270IioSysfsRoot     = "/sys/bus/iio/devices";
@@ -232,32 +230,62 @@ float normalizeDegrees(float deg)
     return deg;
 }
 
-float clampUnit(float value)
+float dot(const Axis3& lhs, const Axis3& rhs)
 {
-    return std::clamp(value, -1.0f, 1.0f);
+    return lhs.x * rhs.x + lhs.y * rhs.y + lhs.z * rhs.z;
 }
 
-void fillPose(CompassSample& sample)
+Axis3 add(const Axis3& lhs, const Axis3& rhs)
 {
-    const float ax = sample.accel.x;
-    const float ay = sample.accel.y;
-    const float az = sample.accel.z;
-    const float mx = sample.mag.x;
-    const float my = sample.mag.y;
-    const float mz = sample.mag.z;
+    return {lhs.x + rhs.x, lhs.y + rhs.y, lhs.z + rhs.z};
+}
 
-    const float roll  = std::atan2(ay, az);
-    const float pitch = std::atan2(-ax, std::sqrt(ay * ay + az * az));
+Axis3 scale(const Axis3& value, float factor)
+{
+    return {value.x * factor, value.y * factor, value.z * factor};
+}
 
-    const float mx2 = mx * std::cos(pitch) + mz * std::sin(pitch);
-    const float my2 =
-        mx * std::sin(roll) * std::sin(pitch) + my * std::cos(roll) - mz * std::sin(roll) * std::cos(pitch);
+Axis3 screenToBmi270(const Axis3& screen)
+{
+    return {-screen.y, screen.x, screen.z};
+}
 
-    sample.headingDeg = normalizeDegrees(std::atan2(-my2, mx2) * kRadToDeg);
-    sample.pitchDeg   = pitch * kRadToDeg;
-    sample.rollDeg    = roll * kRadToDeg;
-    sample.bubbleX    = clampUnit(sample.rollDeg / kBubbleTiltRangeDeg);
-    sample.bubbleY    = clampUnit(sample.pitchDeg / kBubbleTiltRangeDeg);
+Axis3 screenToBmm150(const Axis3& screen)
+{
+    return {-screen.y, screen.x, screen.z};
+}
+
+Axis3 mockWorldToScreen(const Axis3& world, float heading, float pitch, float roll)
+{
+    const float sin_heading = std::sin(heading);
+    const float cos_heading = std::cos(heading);
+    const float sin_pitch   = std::sin(pitch);
+    const float cos_pitch   = std::cos(pitch);
+    const float sin_roll    = std::sin(roll);
+    const float cos_roll    = std::cos(roll);
+
+    const Axis3 right{cos_heading, -sin_heading, 0.0f};
+    const Axis3 top{sin_heading, cos_heading, 0.0f};
+    const Axis3 out{0.0f, 0.0f, 1.0f};
+
+    const Axis3 tilted_top   = add(scale(top, cos_pitch), scale(out, sin_pitch));
+    const Axis3 pitched_out  = add(scale(out, cos_pitch), scale(top, -sin_pitch));
+    const Axis3 tilted_right = add(scale(right, cos_roll), scale(pitched_out, sin_roll));
+    const Axis3 tilted_out   = add(scale(pitched_out, cos_roll), scale(right, -sin_roll));
+
+    return {dot(world, tilted_right), dot(world, tilted_top), dot(world, tilted_out)};
+}
+
+bool fillPose(CompassSample& sample)
+{
+    const CompassPose pose = calculateCompassPose(sample.accel, sample.mag);
+
+    sample.headingDeg = pose.headingDeg;
+    sample.pitchDeg   = pose.pitchDeg;
+    sample.rollDeg    = pose.rollDeg;
+    sample.bubbleX    = pose.bubbleX;
+    sample.bubbleY    = pose.bubbleY;
+    return pose.headingValid;
 }
 
 class ImuBackend {
@@ -284,27 +312,21 @@ public:
         const float pitch   = std::sin(t * 0.8f) * 9.0f;
         const float roll    = std::cos(t * 0.65f) * 12.0f;
 
-        sample.source     = CompassDataSource::Mock;
-        sample.available  = true;
-        sample.status     = "Mock IMU";
-        sample.headingDeg = heading;
-        sample.pitchDeg   = pitch;
-        sample.rollDeg    = roll;
-        sample.bubbleX    = clampUnit(roll / kBubbleTiltRangeDeg);
-        sample.bubbleY    = clampUnit(pitch / kBubbleTiltRangeDeg);
+        const float heading_rad = heading * kDegToRad;
+        const float pitch_rad   = pitch * kDegToRad;
+        const float roll_rad    = roll * kDegToRad;
 
-        const float pitch_rad = pitch * kDegToRad;
-        const float roll_rad  = roll * kDegToRad;
-        sample.accel.x        = -std::sin(pitch_rad) * 9.81f;
-        sample.accel.y        = std::sin(roll_rad) * std::cos(pitch_rad) * 9.81f;
-        sample.accel.z        = std::cos(roll_rad) * std::cos(pitch_rad) * 9.81f;
-        sample.gyro.x         = std::cos(t * 0.8f) * 0.12f;
-        sample.gyro.y         = std::sin(t * 0.65f) * 0.10f;
-        sample.gyro.z         = 0.31f;
-        sample.mag.x          = std::cos(heading * kDegToRad) * 42.0f;
-        sample.mag.y          = -std::sin(heading * kDegToRad) * 42.0f;
-        sample.mag.z          = 5.0f + std::sin(t * 0.42f) * 2.0f;
-        sample.rawMag         = sample.mag;
+        const Axis3 screen_accel = mockWorldToScreen({0.0f, 0.0f, 9.81f}, heading_rad, pitch_rad, roll_rad);
+        const Axis3 screen_mag   = mockWorldToScreen({0.0f, 42.0f, -18.0f}, heading_rad, pitch_rad, roll_rad);
+        const Axis3 raw_accel    = screenToBmi270(screen_accel);
+        const Axis3 raw_mag      = screenToBmm150(screen_mag);
+
+        sample.source    = CompassDataSource::Mock;
+        sample.available = true;
+        sample.status    = "Mock IMU";
+        sample.accel     = mapBmi270ToScreen(raw_accel);
+        sample.gyro      = {std::cos(t * 0.8f) * 0.12f, std::sin(t * 0.65f) * 0.10f, 0.31f};
+        sample.rawMag    = raw_mag;
         return true;
     }
 };
@@ -366,21 +388,23 @@ public:
         sample.available = true;
         sample.status    = _device.display_name + " + " + _device.mag_display_name;
 
-        if (!readScaledAxis(imu_root, kIioAccelXRaw, accel_scale, sample.accel.x) ||
-            !readScaledAxis(imu_root, kIioAccelYRaw, accel_scale, sample.accel.y) ||
-            !readScaledAxis(imu_root, kIioAccelZRaw, accel_scale, sample.accel.z) ||
-            !readScaledAxis(imu_root, kIioGyroXRaw, gyro_scale, sample.gyro.x) ||
-            !readScaledAxis(imu_root, kIioGyroYRaw, gyro_scale, sample.gyro.y) ||
-            !readScaledAxis(imu_root, kIioGyroZRaw, gyro_scale, sample.gyro.z) ||
-            !readScaledAxis(mag_root, kIioMagnXRaw, magn_scale, sample.mag.x) ||
-            !readScaledAxis(mag_root, kIioMagnYRaw, magn_scale, sample.mag.y) ||
-            !readScaledAxis(mag_root, kIioMagnZRaw, magn_scale, sample.mag.z)) {
+        Axis3 raw_accel;
+        Axis3 raw_gyro;
+        if (!readScaledAxis(imu_root, kIioAccelXRaw, accel_scale, raw_accel.x) ||
+            !readScaledAxis(imu_root, kIioAccelYRaw, accel_scale, raw_accel.y) ||
+            !readScaledAxis(imu_root, kIioAccelZRaw, accel_scale, raw_accel.z) ||
+            !readScaledAxis(imu_root, kIioGyroXRaw, gyro_scale, raw_gyro.x) ||
+            !readScaledAxis(imu_root, kIioGyroYRaw, gyro_scale, raw_gyro.y) ||
+            !readScaledAxis(imu_root, kIioGyroZRaw, gyro_scale, raw_gyro.z) ||
+            !readScaledAxis(mag_root, kIioMagnXRaw, magn_scale, sample.rawMag.x) ||
+            !readScaledAxis(mag_root, kIioMagnYRaw, magn_scale, sample.rawMag.y) ||
+            !readScaledAxis(mag_root, kIioMagnZRaw, magn_scale, sample.rawMag.z)) {
             error = "Failed to read BMI270/BMM150 nine-axis data";
             return false;
         }
 
-        sample.rawMag = sample.mag;
-        fillPose(sample);
+        sample.accel = mapBmi270ToScreen(raw_accel);
+        sample.gyro  = mapBmi270ToScreen(raw_gyro);
         return true;
     }
 
@@ -406,6 +430,8 @@ struct CompassModel::Impl {
     std::unique_ptr<ImuBackend> backend = makePrimaryBackend();
     uint32_t last_sample_ms             = 0;
     bool using_mock                     = false;
+    bool has_valid_heading              = false;
+    float last_heading_deg              = 0.0f;
     CompassCalibration calibration;
 
     Impl()
@@ -484,13 +510,24 @@ void CompassModel::tick(uint32_t nowMs)
         }
     }
 
-    if (next.available && next.rawMag.x == 0.0f && next.rawMag.y == 0.0f && next.rawMag.z == 0.0f) {
-        next.rawMag = next.mag;
+    bool heading_valid = false;
+    if (next.available) {
+        if (isUsableVector(next.rawMag)) {
+            const Axis3 calibrated_mag = next.source == CompassDataSource::Iio
+                                             ? applyMagCalibration(next.rawMag, _impl->calibration)
+                                             : next.rawMag;
+            next.mag                   = mapBmm150ToScreen(calibrated_mag);
+        } else {
+            next.mag = {};
+        }
+        heading_valid = fillPose(next);
     }
 
-    if (next.available && next.source == CompassDataSource::Iio) {
-        next.mag = applyMagCalibration(next.mag, _impl->calibration);
-        fillPose(next);
+    if (next.available && heading_valid && std::isfinite(next.headingDeg)) {
+        _impl->last_heading_deg  = next.headingDeg;
+        _impl->has_valid_heading = true;
+    } else if (next.available && _impl->has_valid_heading) {
+        next.headingDeg = _impl->last_heading_deg;
     }
 
     _sample.set(std::move(next));

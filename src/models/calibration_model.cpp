@@ -173,7 +173,7 @@ void CalibrationModel::tick(uint32_t nowMs)
 
 void CalibrationModel::updateSample(const CompassSample& sample)
 {
-    if (_state.get() != CalibrationState::Running || !sample.available) {
+    if (_state.get() != CalibrationState::Running || !sample.available || !isUsableVector(sample.rawMag)) {
         return;
     }
 

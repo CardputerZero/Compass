@@ -4,7 +4,10 @@ project(M5CardputerZeroCompass VERSION 0.1.1 LANGUAGES C CXX ASM)
 
 option(COMPASS_USE_SDL "Use LVGL's SDL backend for desktop testing" ON)
 option(COMPASS_CONVERT_ASSETS "Convert image assets during CMake configure" ON)
+option(BUILD_TESTING "Build Compass tests" OFF)
 set(COMPASS_BIN_NAME "M5CardputerZero-Compass" CACHE STRING "Output executable name")
+
+include(CTest)
 
 if(APPLE AND NOT COMPASS_USE_SDL)
     message(FATAL_ERROR "macOS builds only support COMPASS_USE_SDL=ON.")
@@ -186,3 +189,14 @@ target_link_libraries(${COMPASS_BIN_NAME} PRIVATE
 set_target_properties(${COMPASS_BIN_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${COMPASS_ROOT}/dist"
 )
+
+if(BUILD_TESTING)
+    add_executable(compass_pose_tests
+        tests/compass_pose_test.cpp
+        src/models/compass_pose.cpp
+    )
+    target_include_directories(compass_pose_tests PRIVATE
+        "${COMPASS_SRC_DIR}"
+    )
+    add_test(NAME compass_pose COMMAND compass_pose_tests)
+endif()

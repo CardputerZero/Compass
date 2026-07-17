@@ -1,0 +1,138 @@
+#include "models/compass_pose.hpp"
+
+#include <algorithm>
+#include <cmath>
+
+namespace compass {
+
+namespace {
+
+constexpr float kPi                 = 3.14159265359f;
+constexpr float kRadToDeg           = 180.0f / kPi;
+constexpr float kBubbleTiltRangeDeg = 18.0f;
+constexpr float kMinimumVectorNorm  = 1.0e-5f;
+constexpr float kMinimumForwardNorm = 0.1f;
+
+bool isFinite(const Axis3& value)
+{
+    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+}
+
+float dot(const Axis3& lhs, const Axis3& rhs)
+{
+    return lhs.x * rhs.x + lhs.y * rhs.y + lhs.z * rhs.z;
+}
+
+Axis3 cross(const Axis3& lhs, const Axis3& rhs)
+{
+    return {
+        lhs.y * rhs.z - lhs.z * rhs.y,
+        lhs.z * rhs.x - lhs.x * rhs.z,
+        lhs.x * rhs.y - lhs.y * rhs.x,
+    };
+}
+
+Axis3 subtract(const Axis3& lhs, const Axis3& rhs)
+{
+    return {lhs.x - rhs.x, lhs.y - rhs.y, lhs.z - rhs.z};
+}
+
+Axis3 scale(const Axis3& value, float factor)
+{
+    return {value.x * factor, value.y * factor, value.z * factor};
+}
+
+bool normalize(Axis3& value, float minimumNorm = kMinimumVectorNorm)
+{
+    const float norm = std::sqrt(dot(value, value));
+    if (!std::isfinite(norm) || norm < minimumNorm) {
+        return false;
+    }
+
+    value = scale(value, 1.0f / norm);
+    return true;
+}
+
+float normalizeDegrees(float degrees)
+{
+    degrees = std::fmod(degrees, 360.0f);
+    if (degrees < 0.0f) {
+        degrees += 360.0f;
+    }
+    return degrees;
+}
+
+float clampUnit(float value)
+{
+    return std::clamp(value, -1.0f, 1.0f);
+}
+
+}  // namespace
+
+Axis3 mapBmi270ToScreen(const Axis3& sensor)
+{
+    return {sensor.y, -sensor.x, sensor.z};
+}
+
+Axis3 mapBmm150ToScreen(const Axis3& sensor)
+{
+    // Keep this separate from the BMI270 mapping: the packages can have independent mount rotations.
+    return {sensor.y, -sensor.x, sensor.z};
+}
+
+bool isUsableVector(const Axis3& value)
+{
+    if (!isFinite(value)) {
+        return false;
+    }
+
+    const float norm_squared = dot(value, value);
+    return std::isfinite(norm_squared) && norm_squared >= kMinimumVectorNorm * kMinimumVectorNorm;
+}
+
+CompassPose calculateCompassPose(const Axis3& screenAccel, const Axis3& screenMag)
+{
+    CompassPose pose;
+    if (!isFinite(screenAccel)) {
+        return pose;
+    }
+
+    const float pitch = std::atan2(screenAccel.y, std::hypot(screenAccel.x, screenAccel.z));
+    const float roll  = std::atan2(screenAccel.x, std::hypot(screenAccel.y, screenAccel.z));
+
+    pose.pitchDeg = pitch * kRadToDeg;
+    pose.rollDeg  = roll * kRadToDeg;
+    pose.bubbleX  = clampUnit(pose.rollDeg / kBubbleTiltRangeDeg);
+    pose.bubbleY  = clampUnit(-pose.pitchDeg / kBubbleTiltRangeDeg);
+
+    if (!isFinite(screenMag)) {
+        return pose;
+    }
+
+    Axis3 up = screenAccel;
+    if (!normalize(up)) {
+        return pose;
+    }
+
+    constexpr Axis3 kScreenTop{0.0f, 1.0f, 0.0f};
+    Axis3 forward = subtract(kScreenTop, scale(up, dot(kScreenTop, up)));
+    if (!normalize(forward, kMinimumForwardNorm)) {
+        return pose;
+    }
+
+    Axis3 north = subtract(screenMag, scale(up, dot(screenMag, up)));
+    if (!normalize(north)) {
+        return pose;
+    }
+
+    Axis3 right = cross(forward, up);
+    if (!normalize(right)) {
+        return pose;
+    }
+
+    pose.headingDeg   = normalizeDegrees(std::atan2(-dot(north, right), dot(north, forward)) * kRadToDeg);
+    pose.headingValid = std::isfinite(pose.headingDeg);
+    return pose;
+}
+
+}  // namespace compass
