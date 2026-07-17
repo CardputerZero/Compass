@@ -20,6 +20,7 @@ struct CompassPose {
 // Screen coordinates are +X right, +Y toward the top edge, and +Z out of the display.
 Axis3 mapBmi270ToScreen(const Axis3& sensor);
 Axis3 mapBmm150ToScreen(const Axis3& sensor);
+Axis3 gaussToMicrotesla(const Axis3& gauss);
 
 bool isUsableVector(const Axis3& value);
 CompassPose calculateCompassPose(const Axis3& screenAccel, const Axis3& screenMag);

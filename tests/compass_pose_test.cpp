@@ -43,11 +43,12 @@ void requireAngleNear(float actual, float expected, float tolerance, const std::
             message + " (actual=" + std::to_string(actual) + ", expected=" + std::to_string(expected) + ")");
 }
 
-void requireAxisNear(const compass::Axis3& actual, const compass::Axis3& expected, const std::string& message)
+void requireAxisNear(const compass::Axis3& actual, const compass::Axis3& expected, const std::string& message,
+                     float tolerance = 0.0f)
 {
-    requireNear(actual.x, expected.x, 0.0f, message + " X");
-    requireNear(actual.y, expected.y, 0.0f, message + " Y");
-    requireNear(actual.z, expected.z, 0.0f, message + " Z");
+    requireNear(actual.x, expected.x, tolerance, message + " X");
+    requireNear(actual.y, expected.y, tolerance, message + " Y");
+    requireNear(actual.z, expected.z, tolerance, message + " Z");
 }
 
 float dot(const compass::Axis3& lhs, const compass::Axis3& rhs)
@@ -58,6 +59,11 @@ float dot(const compass::Axis3& lhs, const compass::Axis3& rhs)
 compass::Axis3 add(const compass::Axis3& lhs, const compass::Axis3& rhs)
 {
     return {lhs.x + rhs.x, lhs.y + rhs.y, lhs.z + rhs.z};
+}
+
+compass::Axis3 subtract(const compass::Axis3& lhs, const compass::Axis3& rhs)
+{
+    return {lhs.x - rhs.x, lhs.y - rhs.y, lhs.z - rhs.z};
 }
 
 compass::Axis3 scale(const compass::Axis3& value, float factor)
@@ -100,9 +106,32 @@ void testMountTransforms()
     requireAxisNear(compass::mapBmi270ToScreen(rawY), {1.0f, 0.0f, 0.0f}, "BMI raw Y mount rotation");
     requireAxisNear(compass::mapBmi270ToScreen(rawZ), {0.0f, 0.0f, 1.0f}, "BMI raw Z mount rotation");
 
-    requireAxisNear(compass::mapBmm150ToScreen(rawX), {0.0f, -1.0f, 0.0f}, "BMM raw X mount rotation");
+    requireAxisNear(compass::mapBmm150ToScreen(rawX), {0.0f, 1.0f, 0.0f}, "BMM raw X mount rotation");
     requireAxisNear(compass::mapBmm150ToScreen(rawY), {1.0f, 0.0f, 0.0f}, "BMM raw Y mount rotation");
-    requireAxisNear(compass::mapBmm150ToScreen(rawZ), {0.0f, 0.0f, 1.0f}, "BMM raw Z mount rotation");
+    requireAxisNear(compass::mapBmm150ToScreen(rawZ), {0.0f, 0.0f, -1.0f}, "BMM raw Z mount rotation");
+
+    requireAxisNear(compass::gaussToMicrotesla({-0.105625f, 0.7725f, 0.276875f}), {-10.5625f, 77.25f, 27.6875f},
+                    "BMM IIO gauss to microtesla", 0.0001f);
+}
+
+void testObservedBmm150CardinalDeltas()
+{
+    const compass::Axis3 north{-61.9f, 1210.3f, 387.2f};
+    const compass::Axis3 east{-513.9f, 857.3f, 377.0f};
+    const compass::Axis3 south{-695.3f, 1258.9f, 322.9f};
+    const compass::Axis3 west{-391.8f, 1662.1f, 338.2f};
+
+    const auto screenNorthSouth = compass::mapBmm150ToScreen(subtract(north, south));
+    require(screenNorthSouth.y > 0.0f, "north-minus-south points toward positive screen Y");
+    require(std::abs(screenNorthSouth.y) > 5.0f * std::abs(screenNorthSouth.x),
+            "north-minus-south is dominated by screen Y");
+    require(std::abs(screenNorthSouth.y) > 5.0f * std::abs(screenNorthSouth.z),
+            "north-minus-south rejects the BMM Z axis");
+
+    const auto screenWestEast = compass::mapBmm150ToScreen(subtract(west, east));
+    require(screenWestEast.x > 0.0f, "west-minus-east points toward positive screen X");
+    require(std::abs(screenWestEast.x) > 5.0f * std::abs(screenWestEast.y), "west-minus-east is dominated by screen X");
+    require(std::abs(screenWestEast.x) > 5.0f * std::abs(screenWestEast.z), "west-minus-east rejects the BMM Z axis");
 }
 
 void testVectorValidation()
@@ -227,6 +256,7 @@ void testBubbleClampAndVerticalHeading()
 int main()
 {
     testMountTransforms();
+    testObservedBmm150CardinalDeltas();
     testVectorValidation();
     testObservedTiltDirections();
     testFlatOnBothFaces();

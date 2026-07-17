@@ -16,6 +16,7 @@ enum class CalibrationState {
 
 struct CompassCalibration {
     bool valid = false;
+    // BMM150 calibration is stored in its native IIO unit: gauss.
     Axis3 mag_offset;
     Axis3 mag_scale{1.0f, 1.0f, 1.0f};
 };

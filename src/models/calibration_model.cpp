@@ -13,7 +13,7 @@ namespace {
 constexpr uint32_t kAutoFinishMs              = 20000;
 constexpr uint32_t kMinimumCalibrationSamples = 20;
 constexpr float kMinimumAxisSpan              = 0.01f;
-constexpr float kCoverageTarget               = 80.0f;
+constexpr float kCoverageTarget               = 0.8f;
 constexpr const char* kCalibrationPathEnv     = "COMPASS_CALIBRATION_PATH";
 constexpr const char* kConfigDirEnv           = "COMPASS_CONFIG_DIR";
 constexpr const char* kCalibrationFileName    = "calibration.conf";
@@ -68,18 +68,16 @@ bool envValue(const char* key, std::filesystem::path& path)
     return true;
 }
 
+#if !COMPASS_USE_MOCK_IMU
 std::filesystem::path defaultConfigDir()
 {
-#if COMPASS_USE_MOCK_IMU
-    return ".";
-#else
     const char* home = std::getenv("HOME");
     if (home && home[0] != '\0') {
         return std::filesystem::path(home) / ".config" / "Compass";
     }
     return "/tmp/Compass";
-#endif
 }
+#endif
 
 float configFloat(const std::unordered_map<std::string, std::string>& values, const char* key, float fallback)
 {
@@ -265,6 +263,7 @@ bool CalibrationModel::saveTo(const std::filesystem::path& path, const CompassCa
         }
 
         file << "# M5CardputerZero Compass calibration\n";
+        file << "# Magnetic offsets are stored in gauss\n";
         file << "version=1\n";
         file << "mag_offset_x=" << calibration.mag_offset.x << "\n";
         file << "mag_offset_y=" << calibration.mag_offset.y << "\n";

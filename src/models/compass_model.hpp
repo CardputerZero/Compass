@@ -22,7 +22,7 @@ struct CompassSample {
     float rollDeg    = 0.0f;
     float bubbleX    = 0.0f;
     float bubbleY    = 0.0f;
-    // UI-facing vectors use screen coordinates; rawMag remains in the BMM150 sensor frame for calibration.
+    // UI-facing vectors use screen coordinates. mag is uT; rawMag stays in the BMM150 frame in gauss.
     Axis3 accel;
     Axis3 gyro;
     Axis3 mag;

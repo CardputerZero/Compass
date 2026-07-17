@@ -12,6 +12,7 @@ constexpr float kRadToDeg           = 180.0f / kPi;
 constexpr float kBubbleTiltRangeDeg = 18.0f;
 constexpr float kMinimumVectorNorm  = 1.0e-5f;
 constexpr float kMinimumForwardNorm = 0.1f;
+constexpr float kMicroteslaPerGauss = 100.0f;
 
 bool isFinite(const Axis3& value)
 {
@@ -76,8 +77,12 @@ Axis3 mapBmi270ToScreen(const Axis3& sensor)
 
 Axis3 mapBmm150ToScreen(const Axis3& sensor)
 {
-    // Keep this separate from the BMI270 mapping: the packages can have independent mount rotations.
-    return {sensor.y, -sensor.x, sensor.z};
+    return {sensor.y, sensor.x, -sensor.z};
+}
+
+Axis3 gaussToMicrotesla(const Axis3& gauss)
+{
+    return scale(gauss, kMicroteslaPerGauss);
 }
 
 bool isUsableVector(const Axis3& value)

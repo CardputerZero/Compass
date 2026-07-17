@@ -199,4 +199,21 @@ if(BUILD_TESTING)
         "${COMPASS_SRC_DIR}"
     )
     add_test(NAME compass_pose COMMAND compass_pose_tests)
+
+    add_executable(compass_calibration_tests
+        tests/calibration_model_test.cpp
+        src/models/calibration_model.cpp
+        src/models/compass_pose.cpp
+    )
+    target_include_directories(compass_calibration_tests PRIVATE
+        "${COMPASS_SRC_DIR}"
+    )
+    target_compile_definitions(compass_calibration_tests PRIVATE
+        COMPASS_USE_MOCK_IMU=1
+    )
+    target_link_libraries(compass_calibration_tests PRIVATE
+        smooth_ui_toolkit
+        spdlog::spdlog
+    )
+    add_test(NAME compass_calibration COMMAND compass_calibration_tests)
 endif()

@@ -252,7 +252,7 @@ Axis3 screenToBmi270(const Axis3& screen)
 
 Axis3 screenToBmm150(const Axis3& screen)
 {
-    return {-screen.y, screen.x, screen.z};
+    return {screen.y, screen.x, -screen.z};
 }
 
 Axis3 mockWorldToScreen(const Axis3& world, float heading, float pitch, float roll)
@@ -316,10 +316,10 @@ public:
         const float pitch_rad   = pitch * kDegToRad;
         const float roll_rad    = roll * kDegToRad;
 
-        const Axis3 screen_accel = mockWorldToScreen({0.0f, 0.0f, 9.81f}, heading_rad, pitch_rad, roll_rad);
-        const Axis3 screen_mag   = mockWorldToScreen({0.0f, 42.0f, -18.0f}, heading_rad, pitch_rad, roll_rad);
-        const Axis3 raw_accel    = screenToBmi270(screen_accel);
-        const Axis3 raw_mag      = screenToBmm150(screen_mag);
+        const Axis3 screen_accel     = mockWorldToScreen({0.0f, 0.0f, 9.81f}, heading_rad, pitch_rad, roll_rad);
+        const Axis3 screen_mag_gauss = mockWorldToScreen({0.0f, 0.42f, -0.18f}, heading_rad, pitch_rad, roll_rad);
+        const Axis3 raw_accel        = screenToBmi270(screen_accel);
+        const Axis3 raw_mag          = screenToBmm150(screen_mag_gauss);
 
         sample.source    = CompassDataSource::Mock;
         sample.available = true;
@@ -516,7 +516,7 @@ void CompassModel::tick(uint32_t nowMs)
             const Axis3 calibrated_mag = next.source == CompassDataSource::Iio
                                              ? applyMagCalibration(next.rawMag, _impl->calibration)
                                              : next.rawMag;
-            next.mag                   = mapBmm150ToScreen(calibrated_mag);
+            next.mag                   = gaussToMicrotesla(mapBmm150ToScreen(calibrated_mag));
         } else {
             next.mag = {};
         }
