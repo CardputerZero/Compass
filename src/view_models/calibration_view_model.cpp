@@ -28,7 +28,9 @@ void CalibrationViewModel::onKey(uint32_t key)
         case '6':
         case '\r':
         case '\n':
-            if (_model.state().get() == CalibrationState::Running) {
+            if (_model.state().get() == CalibrationState::Done) {
+                _router.back();
+            } else if (_model.state().get() == CalibrationState::Running) {
                 if (_model.finish()) {
                     _compass_model.reloadCalibration();
                 }
