@@ -23,16 +23,16 @@ constexpr int32_t kDirectionLabelHeight              = 12;
 constexpr int32_t kLargeCrossSize                    = 72;
 constexpr int32_t kSmallCrossSize                    = 21;
 constexpr int32_t kCrossThickness                    = 1;
-constexpr int32_t kBubbleMinSize                     = 43;
-constexpr int32_t kBubbleMaxSize                     = 53;
+constexpr int32_t kBubbleMinSize                     = 44;
+constexpr int32_t kBubbleMaxSize                     = 58;
 constexpr int32_t kBubbleTravel                      = 26;
+constexpr uint32_t kBubbleMotionIntervalMs           = 50;
 constexpr uint32_t kCrossColor                       = 0x5D5D5D;
 constexpr uint32_t kDirectionLabelColor              = 0xFFFFFF;
 constexpr uint32_t kBubbleColor                      = 0x303030;
-constexpr float kGravityMetersPerSecond              = 9.81f;
 constexpr float kCompassUnavailableHeading           = 0.0f;
 constexpr float kCompassUnavailableBubblePos         = 0.0f;
-constexpr float kCompassUnavailableBubbleZ           = 1.0f;
+constexpr float kCompassUnavailableBubbleMotion      = 0.0f;
 constexpr int32_t kInfoPanelX                        = 184;
 constexpr int32_t kInfoPanelHiddenOffsetX            = 150;
 constexpr int32_t kInfoPanelWidth                    = 124;
@@ -181,8 +181,8 @@ public:
         const float heading  = sample.available ? sample.headingDeg : kCompassUnavailableHeading;
         const float bubble_x = sample.available ? sample.bubbleX : kCompassUnavailableBubblePos;
         const float bubble_y = sample.available ? sample.bubbleY : kCompassUnavailableBubblePos;
-        const float bubble_z =
-            sample.available ? std::abs(sample.accel.z) / kGravityMetersPerSecond : kCompassUnavailableBubbleZ;
+        _bubble_motion =
+            sample.available ? calculateBubbleMotion(sample.accel, sample.gyro) : kCompassUnavailableBubbleMotion;
 
         if (!_heading_initialized) {
             _heading_unwrapped   = heading;
@@ -195,11 +195,15 @@ public:
 
         _bubble_x.move(clampNormalized(bubble_x));
         _bubble_y.move(clampNormalized(bubble_y));
-        _bubble_size.move(clampZeroToOne(bubble_z));
     }
 
-    void tick()
+    void tick(uint32_t nowMs)
     {
+        if (_last_bubble_motion_ms == 0 || nowMs - _last_bubble_motion_ms >= kBubbleMotionIntervalMs) {
+            _bubble_size.move(clampZeroToOne(_bubble_motion));
+            _last_bubble_motion_ms = nowMs;
+        }
+
         _x.update();
         _heading.update();
         _bubble_x.update();
@@ -221,9 +225,11 @@ private:
     smooth_ui_toolkit::AnimateValue _heading{0};
     smooth_ui_toolkit::AnimateValue _bubble_x{0};
     smooth_ui_toolkit::AnimateValue _bubble_y{0};
-    smooth_ui_toolkit::AnimateValue _bubble_size{1};
-    float _heading_unwrapped  = 0.0f;
-    bool _heading_initialized = false;
+    smooth_ui_toolkit::AnimateValue _bubble_size{0};
+    float _heading_unwrapped        = 0.0f;
+    float _bubble_motion            = 0.0f;
+    uint32_t _last_bubble_motion_ms = 0;
+    bool _heading_initialized       = false;
 
     void applyState()
     {
@@ -706,9 +712,8 @@ void CompassView::onExit()
 
 void CompassView::tick(uint32_t nowMs)
 {
-    (void)nowMs;
     if (_compass_dial) {
-        _compass_dial->tick();
+        _compass_dial->tick(nowMs);
     }
     if (_info_view) {
         _info_view->tick();

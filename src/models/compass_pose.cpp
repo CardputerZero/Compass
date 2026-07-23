@@ -7,12 +7,14 @@ namespace compass {
 
 namespace {
 
-constexpr float kPi                 = 3.14159265359f;
-constexpr float kRadToDeg           = 180.0f / kPi;
-constexpr float kBubbleTiltRangeDeg = 18.0f;
-constexpr float kMinimumVectorNorm  = 1.0e-5f;
-constexpr float kMinimumForwardNorm = 0.1f;
-constexpr float kMicroteslaPerGauss = 100.0f;
+constexpr float kPi                            = 3.14159265359f;
+constexpr float kRadToDeg                      = 180.0f / kPi;
+constexpr float kBubbleTiltRangeDeg            = 18.0f;
+constexpr float kMinimumVectorNorm             = 1.0e-5f;
+constexpr float kMinimumForwardNorm            = 0.1f;
+constexpr float kMicroteslaPerGauss            = 100.0f;
+constexpr float kGravityMetersPerSecondSquared = 9.81f;
+constexpr float kGyroBaselineRadiansPerSecond  = 10.0f / kRadToDeg;
 
 bool isFinite(const Axis3& value)
 {
@@ -66,6 +68,11 @@ float normalizeDegrees(float degrees)
 float clampUnit(float value)
 {
     return std::clamp(value, -1.0f, 1.0f);
+}
+
+float maxAbsComponent(const Axis3& value)
+{
+    return std::max({std::abs(value.x), std::abs(value.y), std::abs(value.z)});
 }
 
 }  // namespace
@@ -138,6 +145,17 @@ CompassPose calculateCompassPose(const Axis3& screenAccel, const Axis3& screenMa
     pose.headingDeg   = normalizeDegrees(std::atan2(-dot(north, right), dot(north, forward)) * kRadToDeg);
     pose.headingValid = std::isfinite(pose.headingDeg);
     return pose;
+}
+
+float calculateBubbleMotion(const Axis3& screenAccel, const Axis3& screenGyro)
+{
+    if (!isFinite(screenAccel) || !isFinite(screenGyro)) {
+        return 0.0f;
+    }
+
+    const float accel_level = maxAbsComponent(screenAccel) / kGravityMetersPerSecondSquared;
+    const float gyro_level  = maxAbsComponent(screenGyro) / kGyroBaselineRadiansPerSecond;
+    return std::clamp(std::max(accel_level, gyro_level) - 1.0f, 0.0f, 1.0f);
 }
 
 }  // namespace compass

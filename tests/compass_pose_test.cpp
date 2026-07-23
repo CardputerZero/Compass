@@ -251,6 +251,24 @@ void testBubbleClampAndVerticalHeading()
     require(!pose.headingValid, "heading freezes before near-vertical sensor noise becomes dominant");
 }
 
+void testBubbleMotion()
+{
+    constexpr float tenDegreesPerSecond = 10.0f * kDegToRad;
+
+    requireNear(compass::calculateBubbleMotion({0.0f, 0.0f, kGravity}, {}), 0.0f, 0.001f,
+                "stationary gravity keeps the bubble at minimum size");
+    requireNear(compass::calculateBubbleMotion({0.0f, 0.0f, kGravity * 1.5f}, {}), 0.5f, 0.001f,
+                "one and a half g grows the bubble halfway");
+    requireNear(compass::calculateBubbleMotion({}, {0.0f, tenDegreesPerSecond * 1.5f, 0.0f}), 0.5f, 0.001f,
+                "fifteen degrees per second grows the bubble halfway");
+    requireNear(compass::calculateBubbleMotion({}, {tenDegreesPerSecond * 2.0f, 0.0f, 0.0f}), 1.0f, 0.001f,
+                "twenty degrees per second grows the bubble to maximum size");
+    requireNear(compass::calculateBubbleMotion({kGravity * 3.0f, 0.0f, 0.0f}, {}), 1.0f, 0.001f,
+                "large acceleration clamps the bubble at maximum size");
+    requireNear(compass::calculateBubbleMotion({std::numeric_limits<float>::quiet_NaN(), 0.0f, 0.0f}, {}), 0.0f, 0.0f,
+                "invalid motion data falls back to minimum size");
+}
+
 }  // namespace
 
 int main()
@@ -263,6 +281,7 @@ int main()
     testCardinalHeadings();
     testTiltCompensatedHeading();
     testBubbleClampAndVerticalHeading();
+    testBubbleMotion();
 
     if (failures != 0) {
         std::cerr << failures << " compass pose test(s) failed\n";

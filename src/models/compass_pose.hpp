@@ -24,5 +24,6 @@ Axis3 gaussToMicrotesla(const Axis3& gauss);
 
 bool isUsableVector(const Axis3& value);
 CompassPose calculateCompassPose(const Axis3& screenAccel, const Axis3& screenMag);
+float calculateBubbleMotion(const Axis3& screenAccel, const Axis3& screenGyro);
 
 }  // namespace compass
