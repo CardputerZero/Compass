@@ -46,6 +46,8 @@ constexpr int32_t kInfoBarX                          = 67;
 constexpr int32_t kInfoBarMaxWidth                   = 56;
 constexpr int32_t kInfoBarHeight                     = 6;
 constexpr int32_t kInfoBarRadius                     = 1;
+constexpr uint32_t kInfoTrailHoldMs                  = 180;
+constexpr float kInfoTrailDecayPerSecond             = 0.55f;
 constexpr uint32_t kInfoSidebarColor                 = 0x4C4C4C;
 constexpr uint32_t kInfoTextColor                    = 0xF2F2F2;
 constexpr uint32_t kInfoPositiveBarColor             = 0x53D671;
@@ -322,16 +324,11 @@ public:
             _value_labels[i]->setPos(kInfoLabelX, kInfoRowY[i] - 1);
             _value_labels[i]->removeFlag(LV_OBJ_FLAG_SCROLLABLE);
 
+            _trail_bars[i] = std::make_unique<smooth_ui_toolkit::lvgl_cpp::Container>(_panel->raw_ptr());
+            setupBar(*_trail_bars[i], i, LV_OPA_40);
+
             _bars[i] = std::make_unique<smooth_ui_toolkit::lvgl_cpp::Container>(_panel->raw_ptr());
-            _bars[i]->setSize(0, kInfoBarHeight);
-            _bars[i]->setPos(kInfoBarX, kInfoRowY[i] + 2);
-            _bars[i]->setBgOpa(LV_OPA_COVER);
-            _bars[i]->setRadius(kInfoBarRadius);
-            _bars[i]->setBorderWidth(0);
-            _bars[i]->setOutlineWidth(0);
-            _bars[i]->setShadowWidth(0);
-            _bars[i]->setPaddingAll(0);
-            _bars[i]->removeFlag(LV_OBJ_FLAG_SCROLLABLE);
+            setupBar(*_bars[i], i, LV_OPA_COVER);
         }
 
         setValues(Axis3{});
@@ -351,6 +348,40 @@ public:
         applyValues();
     }
 
+    void tick(uint32_t nowMs)
+    {
+        uint32_t elapsed_ms = 0;
+        if (_trail_clock_initialized) {
+            elapsed_ms = nowMs - _last_trail_tick_ms;
+        } else {
+            _trail_clock_initialized = true;
+        }
+        _last_trail_tick_ms = nowMs;
+
+        const float decay = kInfoTrailDecayPerSecond * static_cast<float>(elapsed_ms) / 1000.0f;
+        for (size_t i = 0; i < _trail_ratios.size(); ++i) {
+            if (_trail_peak_pending[i]) {
+                _trail_peak_ms[i]      = nowMs;
+                _trail_peak_pending[i] = false;
+                continue;
+            }
+            if (nowMs - _trail_peak_ms[i] < kInfoTrailHoldMs) {
+                continue;
+            }
+
+            const float next_ratio = std::max(_bar_ratios[i], _trail_ratios[i] - decay);
+            if (next_ratio == _trail_ratios[i]) {
+                continue;
+            }
+
+            _trail_ratios[i] = next_ratio;
+            if (_trail_ratios[i] <= _bar_ratios[i]) {
+                _trail_positive[i] = _bar_positive[i];
+            }
+            applyTrail(i);
+        }
+    }
+
 private:
     int32_t _y = 0;
     std::array<const char*, 3> _labels{};
@@ -359,7 +390,16 @@ private:
     std::unique_ptr<smooth_ui_toolkit::lvgl_cpp::Container> _panel;
     std::unique_ptr<smooth_ui_toolkit::lvgl_cpp::Container> _sidebar;
     std::array<std::unique_ptr<smooth_ui_toolkit::lvgl_cpp::Label>, 3> _value_labels;
+    std::array<std::unique_ptr<smooth_ui_toolkit::lvgl_cpp::Container>, 3> _trail_bars;
     std::array<std::unique_ptr<smooth_ui_toolkit::lvgl_cpp::Container>, 3> _bars;
+    std::array<float, 3> _bar_ratios{};
+    std::array<float, 3> _trail_ratios{};
+    std::array<uint32_t, 3> _trail_peak_ms{};
+    std::array<bool, 3> _bar_positive{};
+    std::array<bool, 3> _trail_positive{};
+    std::array<bool, 3> _trail_peak_pending{};
+    uint32_t _last_trail_tick_ms  = 0;
+    bool _trail_clock_initialized = false;
 
     float valueAt(size_t index) const
     {
@@ -387,9 +427,38 @@ private:
             _value_labels[i]->setText(buffer);
 
             const float ratio = _range <= 0.0f ? 0.0f : std::min(std::abs(value) / _range, 1.0f);
+            _bar_ratios[i]    = ratio;
+            _bar_positive[i]  = value >= 0.0f;
             _bars[i]->setWidth(static_cast<int32_t>(std::round(ratio * kInfoBarMaxWidth)));
-            _bars[i]->setBgColor(lv_color_hex(value >= 0.0f ? kInfoPositiveBarColor : kInfoNegativeBarColor));
+            _bars[i]->setBgColor(lv_color_hex(_bar_positive[i] ? kInfoPositiveBarColor : kInfoNegativeBarColor));
+
+            if (ratio > _trail_ratios[i]) {
+                _trail_ratios[i]       = ratio;
+                _trail_positive[i]     = _bar_positive[i];
+                _trail_peak_pending[i] = true;
+                applyTrail(i);
+            }
         }
+    }
+
+    void applyTrail(size_t index)
+    {
+        _trail_bars[index]->setWidth(static_cast<int32_t>(std::round(_trail_ratios[index] * kInfoBarMaxWidth)));
+        _trail_bars[index]->setBgColor(
+            lv_color_hex(_trail_positive[index] ? kInfoPositiveBarColor : kInfoNegativeBarColor));
+    }
+
+    void setupBar(smooth_ui_toolkit::lvgl_cpp::Container& bar, size_t index, lv_opa_t opacity)
+    {
+        bar.setSize(0, kInfoBarHeight);
+        bar.setPos(kInfoBarX, kInfoRowY[index] + 2);
+        bar.setBgOpa(opacity);
+        bar.setRadius(kInfoBarRadius);
+        bar.setBorderWidth(0);
+        bar.setOutlineWidth(0);
+        bar.setShadowWidth(0);
+        bar.setPaddingAll(0);
+        bar.removeFlag(LV_OBJ_FLAG_SCROLLABLE);
     }
 };
 
@@ -427,9 +496,12 @@ public:
         _mag_panel->setValues(sample.mag);
     }
 
-    void tick()
+    void tick(uint32_t nowMs)
     {
         _x.update();
+        _accel_panel->tick(nowMs);
+        _gyro_panel->tick(nowMs);
+        _mag_panel->tick(nowMs);
         applyX();
     }
 
@@ -716,7 +788,7 @@ void CompassView::tick(uint32_t nowMs)
         _compass_dial->tick(nowMs);
     }
     if (_info_view) {
-        _info_view->tick();
+        _info_view->tick(nowMs);
     }
     if (_key_bar) {
         _key_bar->tick();
