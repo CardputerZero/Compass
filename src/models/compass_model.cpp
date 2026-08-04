@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -14,9 +15,10 @@ namespace compass {
 
 namespace {
 
-constexpr uint32_t kSampleIntervalMs = 33;
-constexpr float kPi                  = 3.14159265359f;
-constexpr float kDegToRad            = kPi / 180.0f;
+constexpr uint32_t kSampleIntervalMs       = 33;
+constexpr uint32_t kBackendRetryIntervalMs = 5000;
+constexpr float kPi                        = 3.14159265359f;
+constexpr float kDegToRad                  = kPi / 180.0f;
 
 constexpr const char* kBmi270I2cSysfsRoot     = "/sys/bus/i2c/devices";
 constexpr const char* kBmi270IioSysfsRoot     = "/sys/bus/iio/devices";
@@ -95,6 +97,47 @@ bool readDoubleFile(const std::filesystem::path& path, double& value)
     return true;
 }
 
+bool pathExists(const std::filesystem::path& path)
+{
+    std::error_code error;
+    return std::filesystem::exists(path, error) && !error;
+}
+
+bool pathIsDirectoryOrSymlink(const std::filesystem::path& path)
+{
+    std::error_code error;
+    const auto status = std::filesystem::symlink_status(path, error);
+    return !error && (std::filesystem::is_directory(status) || std::filesystem::is_symlink(status));
+}
+
+std::filesystem::path configuredPath(const char* environment_name, const char* fallback)
+{
+    const char* configured = std::getenv(environment_name);
+    if (configured && configured[0] != '\0') {
+        return configured;
+    }
+    return fallback;
+}
+
+std::filesystem::path iioSysfsRoot()
+{
+    return configuredPath("COMPASS_IIO_SYSFS_ROOT", kBmi270IioSysfsRoot);
+}
+
+std::filesystem::path preferredIioPath(const char* environment_name, const char* fallback, const char* node_name)
+{
+    const char* configured = std::getenv(environment_name);
+    if (configured && configured[0] != '\0') {
+        return configured;
+    }
+
+    const char* configured_root = std::getenv("COMPASS_IIO_SYSFS_ROOT");
+    if (configured_root && configured_root[0] != '\0') {
+        return std::filesystem::path(configured_root) / node_name;
+    }
+    return fallback;
+}
+
 bool containsBmi270(const std::string& text)
 {
     const auto lower = lowerCopy(text);
@@ -131,19 +174,25 @@ bool isI2cBmi270Node(const std::filesystem::path& path)
 
 bool findI2cNode(std::string& i2c_path)
 {
-    const std::filesystem::path root(kBmi270I2cSysfsRoot);
-    if (!std::filesystem::exists(root)) {
+    const std::filesystem::path root = configuredPath("COMPASS_I2C_SYSFS_ROOT", kBmi270I2cSysfsRoot);
+    if (!pathExists(root)) {
         return false;
     }
 
-    for (const auto& entry : std::filesystem::directory_iterator(root)) {
-        if (!entry.is_directory() && !entry.is_symlink()) {
+    std::error_code error;
+    std::filesystem::directory_iterator entry(root, error);
+    const std::filesystem::directory_iterator end;
+    while (!error && entry != end) {
+        const auto path = entry->path();
+        if (!pathIsDirectoryOrSymlink(path)) {
+            entry.increment(error);
             continue;
         }
-        if (isI2cBmi270Node(entry.path())) {
-            i2c_path = entry.path().string();
+        if (isI2cBmi270Node(path)) {
+            i2c_path = path.string();
             return true;
         }
+        entry.increment(error);
     }
     return false;
 }
@@ -155,7 +204,7 @@ bool isIioBmi270Node(const std::filesystem::path& path)
         return true;
     }
 
-    return std::filesystem::exists(path / kIioAccelXRaw) && std::filesystem::exists(path / kIioGyroXRaw);
+    return pathExists(path / kIioAccelXRaw) && pathExists(path / kIioGyroXRaw);
 }
 
 bool isIioBmm150Node(const std::filesystem::path& path)
@@ -165,8 +214,7 @@ bool isIioBmm150Node(const std::filesystem::path& path)
         return true;
     }
 
-    return std::filesystem::exists(path / kIioMagnXRaw) && std::filesystem::exists(path / kIioMagnYRaw) &&
-           std::filesystem::exists(path / kIioMagnZRaw);
+    return pathExists(path / kIioMagnXRaw) && pathExists(path / kIioMagnYRaw) && pathExists(path / kIioMagnZRaw);
 }
 
 bool readIioDisplayName(const std::filesystem::path& path, const char* fallback, std::string& display_name)
@@ -177,33 +225,38 @@ bool readIioDisplayName(const std::filesystem::path& path, const char* fallback,
     return true;
 }
 
-bool findIioNode(const char* preferred_path, bool (*matches)(const std::filesystem::path&), const char* fallback_name,
-                 std::string& iio_path, std::string& display_name)
+bool findIioNode(const std::filesystem::path& preferred_path, bool (*matches)(const std::filesystem::path&),
+                 const char* fallback_name, std::string& iio_path, std::string& display_name)
 {
-    if (preferred_path && preferred_path[0] != '\0') {
-        const std::filesystem::path preferred(preferred_path);
-        if (std::filesystem::exists(preferred) && matches(preferred)) {
-            iio_path = preferred.string();
-            readIioDisplayName(preferred, fallback_name, display_name);
+    if (!preferred_path.empty()) {
+        if (pathExists(preferred_path) && matches(preferred_path)) {
+            iio_path = preferred_path.string();
+            readIioDisplayName(preferred_path, fallback_name, display_name);
             return true;
         }
     }
 
-    const std::filesystem::path root(kBmi270IioSysfsRoot);
-    if (!std::filesystem::exists(root)) {
+    const std::filesystem::path root = iioSysfsRoot();
+    if (!pathExists(root)) {
         return false;
     }
 
-    for (const auto& entry : std::filesystem::directory_iterator(root)) {
-        if (!entry.is_directory() && !entry.is_symlink()) {
+    std::error_code error;
+    std::filesystem::directory_iterator entry(root, error);
+    const std::filesystem::directory_iterator end;
+    while (!error && entry != end) {
+        const auto path = entry->path();
+        if (!pathIsDirectoryOrSymlink(path)) {
+            entry.increment(error);
             continue;
         }
-        if (!matches(entry.path())) {
+        if (!matches(path)) {
+            entry.increment(error);
             continue;
         }
 
-        iio_path = entry.path().string();
-        readIioDisplayName(entry.path(), fallback_name, display_name);
+        iio_path = path.string();
+        readIioDisplayName(path, fallback_name, display_name);
         return true;
     }
     return false;
@@ -299,6 +352,13 @@ class MockImuBackend : public ImuBackend {
 public:
     bool init(std::string& error) override
     {
+#if COMPASS_USE_MOCK_IMU
+        const char* force_unavailable = std::getenv("COMPASS_MOCK_SENSOR_UNAVAILABLE");
+        if (force_unavailable && force_unavailable[0] == '1') {
+            error = "BMM150 IIO device not found";
+            return false;
+        }
+#endif
         (void)error;
         return true;
     }
@@ -338,14 +398,14 @@ public:
     {
         findI2cNode(_device.i2c_path);
 
-        if (!findIioNode(kBmi270IioDevicePath, isIioBmi270Node, kBmi270DeviceName, _device.iio_path,
-                         _device.display_name)) {
+        if (!findIioNode(preferredIioPath("COMPASS_BMI270_IIO_PATH", kBmi270IioDevicePath, "iio:device0"),
+                         isIioBmi270Node, kBmi270DeviceName, _device.iio_path, _device.display_name)) {
             error = "BMI270 IIO device not found";
             return false;
         }
 
-        if (!findIioNode(kBmm150IioDevicePath, isIioBmm150Node, kBmm150DeviceName, _device.mag_iio_path,
-                         _device.mag_display_name)) {
+        if (!findIioNode(preferredIioPath("COMPASS_BMM150_IIO_PATH", kBmm150IioDevicePath, "iio:device2"),
+                         isIioBmm150Node, kBmm150DeviceName, _device.mag_iio_path, _device.mag_display_name)) {
             error = "BMM150 IIO device not found";
             return false;
         }
@@ -429,9 +489,14 @@ std::unique_ptr<ImuBackend> makePrimaryBackend()
 struct CompassModel::Impl {
     std::unique_ptr<ImuBackend> backend = makePrimaryBackend();
     uint32_t last_sample_ms             = 0;
+    uint32_t last_retry_ms              = 0;
+    uint32_t sample_sequence            = 0;
     bool using_mock                     = false;
+    bool backend_ready                  = false;
+    bool retry_clock_started            = false;
     bool has_valid_heading              = false;
     float last_heading_deg              = 0.0f;
+    std::string unavailable_status      = "Compass sensors unavailable";
     CompassCalibration calibration;
 
     Impl()
@@ -444,23 +509,67 @@ struct CompassModel::Impl {
     bool init()
     {
         loadCalibration();
+        return initializeBackend(false);
+    }
 
+    bool initializeBackend(bool retry)
+    {
         std::string error;
         if (backend && backend->init(error)) {
-            spdlog::info("CompassModel: using {} backend", using_mock ? "mock" : "IIO");
+            backend_ready       = true;
+            retry_clock_started = false;
+            unavailable_status.clear();
+            if (retry) {
+                spdlog::info("CompassModel: {} backend recovered", using_mock ? "mock" : "IIO");
+            } else {
+                spdlog::info("CompassModel: using {} backend", using_mock ? "mock" : "IIO");
+            }
             return true;
         }
 
-        spdlog::warn("CompassModel: IMU init failed: {}; falling back to mock", error);
-        useMock("Mock IMU");
-        return backend->init(error);
+        backend_ready      = false;
+        unavailable_status = error.empty() ? "Compass sensors unavailable" : error;
+        if (retry) {
+            spdlog::debug("CompassModel: backend retry failed: {}", unavailable_status);
+        } else {
+            spdlog::warn("CompassModel: IMU init failed: {}; sensor data unavailable", unavailable_status);
+        }
+        return false;
     }
 
-    void useMock(const std::string& reason)
+    bool retryBackend(uint32_t now_ms)
     {
-        using_mock = true;
-        backend    = std::make_unique<MockImuBackend>();
-        spdlog::info("CompassModel: fallback backend active: {}", reason);
+        if (!retry_clock_started) {
+            retry_clock_started = true;
+            last_retry_ms       = now_ms;
+            return false;
+        }
+        if (now_ms - last_retry_ms < kBackendRetryIntervalMs) {
+            return false;
+        }
+
+        last_retry_ms = now_ms;
+        backend       = makePrimaryBackend();
+        return initializeBackend(true);
+    }
+
+    void markReadFailure(uint32_t now_ms, const std::string& error)
+    {
+        backend_ready       = false;
+        retry_clock_started = true;
+        last_retry_ms       = now_ms;
+        unavailable_status  = error.empty() ? "Compass sensor read failed" : error;
+        backend             = makePrimaryBackend();
+        spdlog::warn("CompassModel: IMU read failed: {}; sensor data unavailable", unavailable_status);
+    }
+
+    CompassSample unavailableSample() const
+    {
+        CompassSample sample;
+        sample.source    = using_mock ? CompassDataSource::Mock : CompassDataSource::Iio;
+        sample.available = false;
+        sample.status    = unavailable_status;
+        return sample;
     }
 
     bool loadCalibration()
@@ -480,7 +589,9 @@ struct CompassModel::Impl {
 
 CompassModel::CompassModel() : _impl(std::make_unique<Impl>())
 {
-    _impl->init();
+    if (!_impl->init()) {
+        _sample.set(_impl->unavailableSample());
+    }
 }
 
 CompassModel::~CompassModel() = default;
@@ -497,18 +608,24 @@ void CompassModel::tick(uint32_t nowMs)
     }
     _impl->last_sample_ms = nowMs;
 
+    if (!_impl->backend_ready && !_impl->retryBackend(nowMs)) {
+        _sample.set(_impl->unavailableSample());
+        return;
+    }
+
     CompassSample next;
     std::string error;
     if (!_impl->backend->read(nowMs, next, error)) {
-        spdlog::warn("CompassModel: IMU read failed: {}; falling back to mock", error);
-        _impl->useMock(error);
-        error.clear();
-        if (!_impl->backend->init(error) || !_impl->backend->read(nowMs, next, error)) {
-            next.source    = CompassDataSource::Mock;
-            next.available = false;
-            next.status    = error.empty() ? "No IMU data" : error;
-        }
+        _impl->markReadFailure(nowMs, error);
+        _sample.set(_impl->unavailableSample());
+        return;
     }
+
+    ++_impl->sample_sequence;
+    if (_impl->sample_sequence == 0) {
+        ++_impl->sample_sequence;
+    }
+    next.sequence = _impl->sample_sequence;
 
     bool heading_valid = false;
     if (next.available) {

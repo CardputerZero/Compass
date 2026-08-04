@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdio>
 #include <random>
+#include <string>
 
 namespace compass {
 
@@ -52,6 +53,13 @@ constexpr uint32_t kInfoSidebarColor                 = 0x4C4C4C;
 constexpr uint32_t kInfoTextColor                    = 0xF2F2F2;
 constexpr uint32_t kInfoPositiveBarColor             = 0x53D671;
 constexpr uint32_t kInfoNegativeBarColor             = 0xFED40D;
+constexpr int32_t kUnavailablePanelWidth             = 276;
+constexpr int32_t kUnavailablePanelHeight            = 74;
+constexpr uint32_t kUnavailablePanelColor            = 0x101010;
+constexpr uint32_t kUnavailableBorderColor           = 0x363636;
+constexpr uint32_t kUnavailableAccentColor           = 0xFED40D;
+constexpr uint32_t kUnavailableBodyColor             = 0x9A9A9A;
+constexpr float kUnavailableFadeDuration             = 0.18f;
 constexpr std::array<const char*, 4> kDirectionTexts = {"N", "E", "S", "W"};
 constexpr std::array<float, 4> kDirectionAngles      = {0.0f, 90.0f, 180.0f, 270.0f};
 constexpr std::array<int32_t, 3> kInfoPanelY         = {11, 52, 94};
@@ -97,6 +105,19 @@ float unwrapAngle(float previous_unwrapped_angle, float next_angle)
     }
 
     return previous_unwrapped_angle + delta;
+}
+
+bool statusContains(const std::string& status, const char* needle)
+{
+    return status.find(needle) != std::string::npos;
+}
+
+const char* unavailableBody(const std::string& status)
+{
+    if (statusContains(status, "not found")) {
+        return "Compass sensor not detected.\nCompass is unavailable.";
+    }
+    return "Compass sensor read failed.\nRetrying automatically.";
 }
 
 }  // namespace
@@ -176,6 +197,13 @@ public:
     void setExpanded(bool expanded)
     {
         _x.move(expanded ? kCompassExpandedX : 0.0f);
+    }
+
+    void setVisible(bool visible)
+    {
+        if (_panel) {
+            _panel->setHidden(!visible);
+        }
     }
 
     void setSample(const CompassSample& sample)
@@ -342,6 +370,13 @@ public:
         }
     }
 
+    void setVisible(bool visible)
+    {
+        if (_panel) {
+            _panel->setHidden(!visible);
+        }
+    }
+
     void setValues(const Axis3& values)
     {
         _values = values;
@@ -489,6 +524,13 @@ public:
         _x.move(_expanded ? 0.0f : static_cast<float>(kInfoPanelHiddenOffsetX));
     }
 
+    void setVisible(bool visible)
+    {
+        _accel_panel->setVisible(visible);
+        _gyro_panel->setVisible(visible);
+        _mag_panel->setVisible(visible);
+    }
+
     void setSample(const CompassSample& sample)
     {
         _accel_panel->setValues(sample.accel);
@@ -521,6 +563,97 @@ private:
     }
 };
 
+class CompassUnavailableView {
+public:
+    explicit CompassUnavailableView(lv_obj_t* parent)
+    {
+        _opa.easingOptions().duration       = kUnavailableFadeDuration;
+        _opa.easingOptions().easingFunction = smooth_ui_toolkit::ease::ease_out_quad;
+
+        _panel = std::make_unique<smooth_ui_toolkit::lvgl_cpp::Container>(parent);
+        _panel->setSize(kUnavailablePanelWidth, kUnavailablePanelHeight);
+        _panel->align(LV_ALIGN_CENTER, 0, -3);
+        _panel->setBgColor(lv_color_hex(kUnavailablePanelColor));
+        _panel->setBgOpa(LV_OPA_COVER);
+        _panel->setBorderColor(lv_color_hex(kUnavailableBorderColor));
+        _panel->setBorderWidth(1);
+        _panel->setRadius(6);
+        _panel->setPaddingAll(0);
+        _panel->removeFlag(LV_OBJ_FLAG_SCROLLABLE);
+        _panel->setHidden(true);
+
+        _accent = std::make_unique<smooth_ui_toolkit::lvgl_cpp::Container>(_panel->raw_ptr());
+        _accent->setSize(3, 42);
+        _accent->setPos(11, 15);
+        _accent->setBgColor(lv_color_hex(kUnavailableAccentColor));
+        _accent->setBgOpa(LV_OPA_COVER);
+        _accent->setBorderWidth(0);
+        _accent->setRadius(1);
+        _accent->setPaddingAll(0);
+        _accent->removeFlag(LV_OBJ_FLAG_SCROLLABLE);
+
+        _title = std::make_unique<smooth_ui_toolkit::lvgl_cpp::Label>(_panel->raw_ptr());
+        _title->setText("Compass unavailable");
+        _title->setTextFont(&font_chivo_medium_14);
+        _title->setTextColor(lv_color_hex(0xFFFFFF));
+        _title->setSize(236, 17);
+        _title->setPos(24, 12);
+        _title->removeFlag(LV_OBJ_FLAG_SCROLLABLE);
+
+        _body = std::make_unique<smooth_ui_toolkit::lvgl_cpp::Label>(_panel->raw_ptr());
+        _body->setTextFont(&font_chivo_mono_medium_12);
+        _body->setTextColor(lv_color_hex(kUnavailableBodyColor));
+        _body->setTextAlign(LV_TEXT_ALIGN_LEFT);
+        _body->setLongMode(LV_LABEL_LONG_WRAP);
+        _body->setSize(240, 32);
+        _body->setPos(24, 34);
+        _body->removeFlag(LV_OBJ_FLAG_SCROLLABLE);
+    }
+
+    void setUnavailable(bool unavailable, const std::string& status)
+    {
+        if (_body) {
+            _body->setText(unavailableBody(status));
+        }
+        if (unavailable == _visible) {
+            return;
+        }
+
+        _opa.update();
+        _visible = unavailable;
+        if (_visible) {
+            _panel->setHidden(false);
+            _panel->moveForeground();
+            _opa.move(255.0f);
+        } else {
+            _opa.move(0.0f);
+        }
+        applyOpacity();
+    }
+
+    void tick()
+    {
+        _opa.update();
+        applyOpacity();
+        if (!_visible && _opa.done() && _opa.directValue() <= 0.0f) {
+            _panel->setHidden(true);
+        }
+    }
+
+private:
+    std::unique_ptr<smooth_ui_toolkit::lvgl_cpp::Container> _panel;
+    std::unique_ptr<smooth_ui_toolkit::lvgl_cpp::Container> _accent;
+    std::unique_ptr<smooth_ui_toolkit::lvgl_cpp::Label> _title;
+    std::unique_ptr<smooth_ui_toolkit::lvgl_cpp::Label> _body;
+    smooth_ui_toolkit::AnimateValue _opa{0};
+    bool _visible = false;
+
+    void applyOpacity()
+    {
+        _panel->setOpa(static_cast<lv_opa_t>(std::clamp(static_cast<int32_t>(std::round(_opa.directValue())), 0, 255)));
+    }
+};
+
 class MagicView {
 public:
     explicit MagicView(lv_obj_t* parent) : _parent(parent)
@@ -542,7 +675,7 @@ public:
 
     void generate(uint32_t magic_serial)
     {
-        if (magic_serial == 0 || !_parent || !_plane) {
+        if (!_enabled || magic_serial == 0 || !_parent || !_plane) {
             return;
         }
 
@@ -591,6 +724,14 @@ public:
         applyState(0);
     }
 
+    void setEnabled(bool enabled)
+    {
+        _enabled = enabled;
+        if (!_enabled) {
+            hide();
+        }
+    }
+
     void tick(uint32_t nowMs)
     {
         if (!_active) {
@@ -624,6 +765,7 @@ private:
     uint32_t _start_ms    = 0;
     uint32_t _duration_ms = kMagicMinDurationMs;
     bool _active          = false;
+    bool _enabled         = true;
 
     int32_t parentWidth() const
     {
@@ -755,10 +897,11 @@ void CompassView::onEnter(lv_obj_t* parent)
     _root->setScrollbarMode(LV_SCROLLBAR_MODE_OFF);
     _root->removeFlag(LV_OBJ_FLAG_SCROLLABLE);
 
-    _compass_dial = std::make_unique<CompassDialView>(_root->raw_ptr());
-    _info_view    = std::make_unique<CompassInfoView>(_root->raw_ptr());
-    _key_bar      = std::make_unique<BottomKeyBar>(_root->raw_ptr());
-    _magic_view   = std::make_unique<MagicView>(_root->raw_ptr());
+    _compass_dial     = std::make_unique<CompassDialView>(_root->raw_ptr());
+    _info_view        = std::make_unique<CompassInfoView>(_root->raw_ptr());
+    _key_bar          = std::make_unique<BottomKeyBar>(_root->raw_ptr());
+    _magic_view       = std::make_unique<MagicView>(_root->raw_ptr());
+    _unavailable_view = std::make_unique<CompassUnavailableView>(_root->raw_ptr());
 
     _magic_serial_seen = _view_model.magic().get();
     _view_model.sample().observe(this, onSampleChanged);
@@ -775,6 +918,7 @@ void CompassView::onExit()
     _view_model.magic().removeObserver();
     _view_model.infoExpanded().removeObserver();
     _view_model.sample().removeObserver();
+    _unavailable_view.reset();
     _magic_view.reset();
     _key_bar.reset();
     _info_view.reset();
@@ -796,16 +940,32 @@ void CompassView::tick(uint32_t nowMs)
     if (_magic_view) {
         _magic_view->tick(nowMs);
     }
+    if (_unavailable_view) {
+        _unavailable_view->tick();
+    }
 }
 
 void CompassView::renderSample(const CompassSample& sample)
 {
+    const bool unavailable = !sample.available && !sample.status.empty();
+    _compass_available     = !unavailable;
+
     if (_compass_dial) {
         _compass_dial->setSample(sample);
+        _compass_dial->setVisible(!unavailable);
     }
     if (_info_view) {
         _info_view->setSample(sample);
+        _info_view->setVisible(!unavailable);
     }
+    if (_magic_view) {
+        _magic_view->setEnabled(!unavailable);
+    }
+    if (_unavailable_view) {
+        _unavailable_view->setUnavailable(unavailable, sample.status);
+    }
+
+    renderInfoExpanded(_view_model.infoExpanded().get());
 }
 
 void CompassView::renderInfoExpanded(bool expanded)
@@ -818,6 +978,11 @@ void CompassView::renderInfoExpanded(bool expanded)
     }
 
     if (!_key_bar) {
+        return;
+    }
+
+    if (!_compass_available) {
+        _key_bar->setItems({});
         return;
     }
 

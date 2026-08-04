@@ -12,6 +12,7 @@ BUILD_DIR="${BUILD_DIR:-${ROOT_DIR}/build/package}"
 STAGE_DIR="${STAGE_DIR:-${ROOT_DIR}/build/deb-root}"
 DIST_DIR="${DIST_DIR:-${ROOT_DIR}/dist}"
 BIN_NAME="M5CardputerZero-Compass"
+EXECUTABLE="${ROOT_DIR}/dist/${BIN_NAME}"
 PACKAGE_ICON_NAME="${PACKAGE_ICON_NAME:-m5cardputerzero-compass.png}"
 CMAKE_BIN="${CMAKE:-cmake}"
 CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}"
@@ -23,6 +24,11 @@ fi
 
 if ! command -v "${CMAKE_BIN}" >/dev/null 2>&1; then
     echo "cmake not found. Install CMake or set CMAKE=/path/to/cmake." >&2
+    exit 1
+fi
+
+if ! command -v file >/dev/null 2>&1; then
+    echo "file not found. Install file before packaging." >&2
     exit 1
 fi
 
@@ -67,9 +73,9 @@ if [[ "$(read_cmake_cache_value COMPASS_USE_SDL)" != "OFF" ]]; then
     exit 1
 fi
 PACKAGE_VERSION="$(read_cmake_cache_value CMAKE_PROJECT_VERSION)"
+rm -f "${EXECUTABLE}"
 "${CMAKE_BIN}" --build "${BUILD_DIR}" -j"${PARALLEL}"
 
-EXECUTABLE="${ROOT_DIR}/dist/${BIN_NAME}"
 ICON_FILE="${SCRIPT_DIR}/images/compass.png"
 DESKTOP_TEMPLATE="${SCRIPT_DIR}/compass.desktop.in"
 
@@ -79,6 +85,15 @@ for path in "${EXECUTABLE}" "${ICON_FILE}" "${DESKTOP_TEMPLATE}"; do
         exit 1
     fi
 done
+
+EXECUTABLE_INFO="$(file -b "${EXECUTABLE}")"
+case "${EXECUTABLE_INFO}" in
+    *"ARM aarch64"*) ;;
+    *)
+        echo "Invalid package binary architecture: ${EXECUTABLE_INFO}" >&2
+        exit 1
+        ;;
+esac
 
 rm -rf "${STAGE_DIR}"
 mkdir -p \

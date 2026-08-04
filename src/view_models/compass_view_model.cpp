@@ -16,6 +16,12 @@ void CompassViewModel::onEnter()
 
 void CompassViewModel::onKey(uint32_t key)
 {
+    if (!_model.sample().get().available) {
+        _info_expanded.set(false);
+        _magic_count = 0;
+        return;
+    }
+
     switch (key) {
         case ' ':
             if (canGenerateMagic()) {
@@ -44,11 +50,17 @@ void CompassViewModel::onKey(uint32_t key)
 void CompassViewModel::tick(uint32_t nowMs)
 {
     _model.tick(nowMs);
+    if (!_model.sample().get().available) {
+        if (_info_expanded.get()) {
+            _info_expanded.set(false);
+        }
+        _magic_count = 0;
+    }
 }
 
 bool CompassViewModel::canGenerateMagic() const
 {
-    return true;
+    return _model.sample().get().available;
 }
 
 void CompassViewModel::generateMagic()

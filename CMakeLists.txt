@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(M5CardputerZeroCompass VERSION 0.2.0 LANGUAGES C CXX ASM)
+project(M5CardputerZeroCompass VERSION 0.2.1 LANGUAGES C CXX ASM)
 
 option(COMPASS_USE_SDL "Use LVGL's SDL backend for desktop testing" ON)
 option(COMPASS_CONVERT_ASSETS "Convert image assets during CMake configure" ON)
@@ -216,4 +216,25 @@ if(BUILD_TESTING)
         spdlog::spdlog
     )
     add_test(NAME compass_calibration COMMAND compass_calibration_tests)
+
+    add_executable(compass_model_unavailable_tests
+        tests/compass_model_unavailable_test.cpp
+        src/core/compass_router.cpp
+        src/models/compass_model.cpp
+        src/models/calibration_model.cpp
+        src/models/compass_pose.cpp
+        src/view_models/compass_view_model.cpp
+    )
+    target_include_directories(compass_model_unavailable_tests PRIVATE
+        "${COMPASS_SRC_DIR}"
+    )
+    target_compile_definitions(compass_model_unavailable_tests PRIVATE
+        COMPASS_USE_IIO_IMU=1
+        COMPASS_USE_MOCK_IMU=0
+    )
+    target_link_libraries(compass_model_unavailable_tests PRIVATE
+        smooth_ui_toolkit
+        spdlog::spdlog
+    )
+    add_test(NAME compass_model_unavailable COMMAND compass_model_unavailable_tests)
 endif()

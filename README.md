@@ -7,7 +7,7 @@ Compass app for M5Stack CardputerZero.
 - Show compass heading with animated dial
 - Show pitch/roll bubble level overlay
 - Expand live accelerometer, gyroscope, and magnetometer values
-- Calibrate magnetometer offset/scale with a figure-eight motion
+- Calibrate hard-iron and cross-axis magnetic distortion with full 3D rotation
 - Save and load calibration data between launches
 
 ## Dependencies

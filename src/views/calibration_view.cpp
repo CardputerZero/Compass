@@ -125,7 +125,7 @@ void CalibrationView::renderStatus(const std::string& status)
         return;
     }
 
-    _hint_label->setText(status.empty() ? "Move in a figure eight" : status);
+    _hint_label->setText(status.empty() ? "Rotate through every direction" : status);
 }
 
 void CalibrationView::renderProgress(float progress)
