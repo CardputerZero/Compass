@@ -7,11 +7,13 @@ namespace compass {
 
 namespace {
 
-constexpr float kPi                            = 3.14159265359f;
-constexpr float kRadToDeg                      = 180.0f / kPi;
-constexpr float kBubbleTiltRangeDeg            = 18.0f;
-constexpr float kMinimumVectorNorm             = 1.0e-5f;
-constexpr float kMinimumForwardNorm            = 0.1f;
+constexpr float kPi                 = 3.14159265359f;
+constexpr float kRadToDeg           = 180.0f / kPi;
+constexpr float kBubbleTiltRangeDeg = 18.0f;
+constexpr float kMinimumVectorNorm  = 1.0e-5f;
+// Keep heading usable while the top edge is steep, but avoid amplifying the
+// noise once that edge is effectively parallel to gravity (about 87 degrees).
+constexpr float kMinimumForwardNorm            = 0.05f;
 constexpr float kMicroteslaPerGauss            = 100.0f;
 constexpr float kGravityMetersPerSecondSquared = 9.81f;
 constexpr float kGyroBaselineRadiansPerSecond  = 10.0f / kRadToDeg;
@@ -140,6 +142,15 @@ CompassPose calculateCompassPose(const Axis3& screenAccel, const Axis3& screenMa
     Axis3 right = cross(forward, up);
     if (!normalize(right)) {
         return pose;
+    }
+
+    // The accelerometer points out of the screen when the display is face-up
+    // and into it when the display is face-down.  The projected top edge is
+    // unchanged by that flip, but cross(forward, up) changes the sign of the
+    // right edge.  Align it with the screen's +X direction so turning the
+    // device over does not introduce a 180-degree heading error.
+    if (up.z < 0.0f) {
+        right = scale(right, -1.0f);
     }
 
     pose.headingDeg   = normalizeDegrees(std::atan2(-dot(north, right), dot(north, forward)) * kRadToDeg);

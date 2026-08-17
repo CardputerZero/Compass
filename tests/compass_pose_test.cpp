@@ -188,6 +188,18 @@ void testFlatOnBothFaces()
     requireNear(pose.rollDeg, 0.0f, 0.001f, "screen-down roll is level");
     requireNear(pose.bubbleX, 0.0f, 0.001f, "screen-down bubble X is centered");
     requireNear(pose.bubbleY, 0.0f, 0.001f, "screen-down bubble Y is centered");
+
+    const std::vector<std::pair<compass::Axis3, float>> faceDownHeadings{
+        {northMag, 0.0f},
+        {{-42.0f, 0.0f, -18.0f}, 90.0f},
+        {{0.0f, -42.0f, -18.0f}, 180.0f},
+        {{42.0f, 0.0f, -18.0f}, 270.0f},
+    };
+    for (const auto& [mag, expected] : faceDownHeadings) {
+        pose = compass::calculateCompassPose({0.0f, 0.0f, -kGravity}, mag);
+        require(pose.headingValid, "screen-down cardinal heading is valid");
+        requireAngleNear(pose.headingDeg, expected, 0.001f, "screen-down cardinal heading");
+    }
 }
 
 void testCardinalHeadings()
@@ -245,10 +257,16 @@ void testBubbleClampAndVerticalHeading()
     require(!pose.headingValid, "heading is undefined when the screen top is vertical");
     require(std::isfinite(pose.pitchDeg) && std::isfinite(pose.rollDeg), "vertical pose angles stay finite");
 
-    const auto nearVerticalAccel = worldToScreen({0.0f, 0.0f, kGravity}, 0.0f, 85.0f, 0.0f);
-    const auto nearVerticalMag   = worldToScreen(northMag, 0.0f, 85.0f, 0.0f);
+    const auto nearVerticalAccel = worldToScreen({0.0f, 0.0f, kGravity}, 37.0f, 85.0f, 0.0f);
+    const auto nearVerticalMag   = worldToScreen(northMag, 37.0f, 85.0f, 0.0f);
     pose                         = compass::calculateCompassPose(nearVerticalAccel, nearVerticalMag);
-    require(!pose.headingValid, "heading freezes before near-vertical sensor noise becomes dominant");
+    require(pose.headingValid, "heading remains valid at a steep but usable tilt");
+    requireAngleNear(pose.headingDeg, 37.0f, 0.01f, "steep tilt heading remains stable");
+
+    const auto verticalAccel = worldToScreen({0.0f, 0.0f, kGravity}, 37.0f, 89.0f, 0.0f);
+    const auto verticalMag   = worldToScreen(northMag, 37.0f, 89.0f, 0.0f);
+    pose                     = compass::calculateCompassPose(verticalAccel, verticalMag);
+    require(!pose.headingValid, "heading is rejected when the top edge is effectively vertical");
 }
 
 void testBubbleMotion()
