@@ -7,6 +7,7 @@
 #include "view_models/compass_view_model.hpp"
 #include "views/calibration_view.hpp"
 #include "views/compass_view.hpp"
+#include "views/help_view.hpp"
 #include "views/view.hpp"
 #include <lvgl.h>
 #include <array>
@@ -39,6 +40,7 @@ private:
     CalibrationViewModel _calibration_vm;
     CompassView _compass_view;
     CalibrationView _calibration_view;
+    HelpView _help_view;
     ViewModel* _current_vm    = nullptr;
     View* _current_view       = nullptr;
     lv_group_t* _input_group  = nullptr;

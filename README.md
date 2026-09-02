@@ -107,7 +107,8 @@ COMPASS_CALIBRATION_PATH=./calibration.conf ./dist/M5CardputerZero-Compass
 
 Key controls:
 
-- Compass page: `8` expand/collapse sensor info, `Esc` exit
+- Compass page: `8` expand/collapse sensor info, `fn+H` open help, `Esc` exit
+- Help overlay: `fn+H` or `Esc` close
 - Expanded info: `7` open calibration, `8` collapse sensor info
 - Calibration page: `6` or Enter start/save calibration, `4` or Esc back
 

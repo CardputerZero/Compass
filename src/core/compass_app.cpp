@@ -9,6 +9,7 @@ CompassApp::CompassApp()
       _calibration_vm(_router, _calibration_model, _compass_model),
       _compass_view(_compass_vm),
       _calibration_view(_calibration_vm),
+      _help_view(lv_screen_active()),
       _view_models{&_compass_vm, &_calibration_vm},
       _views{&_compass_view, &_calibration_view}
 {
@@ -37,6 +38,18 @@ void CompassApp::start()
 
 void CompassApp::onKey(uint32_t key)
 {
+    if (key == compass_key::Help) {
+        _help_view.toggle();
+        return;
+    }
+
+    if (_help_view.visible()) {
+        if (key == '\x1b') {
+            _help_view.hide();
+        }
+        return;
+    }
+
     if (key == '\x1b' && _router.page() == PageId::Compass) {
         spdlog::info("CompassApp: quit requested");
         _quit_requested = true;
@@ -50,6 +63,11 @@ void CompassApp::onKey(uint32_t key)
 
 void CompassApp::onLvglKey(uint32_t lv_key, const char* utf8)
 {
+    if (lv_key == compass_key::Help) {
+        onKey(compass_key::Help);
+        return;
+    }
+
     if (lv_key == LV_KEY_ESC) {
         onKey('\x1b');
         return;
@@ -73,6 +91,12 @@ void CompassApp::onLvglKey(uint32_t lv_key, const char* utf8)
 
     if (utf8 && utf8[0] == ' ') {
         onKey(' ');
+        return;
+    }
+
+    // SDL has no Fn layer; accept H as the desktop equivalent of Fn+H.
+    if (utf8 && (utf8[0] == 'h' || utf8[0] == 'H')) {
+        onKey(compass_key::Help);
         return;
     }
 

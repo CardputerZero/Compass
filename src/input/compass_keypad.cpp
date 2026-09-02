@@ -1,4 +1,5 @@
 #include "input/compass_keypad.hpp"
+#include "core/compass_types.hpp"
 
 #include <spdlog/spdlog.h>
 #include <cstdlib>
@@ -36,6 +37,7 @@ bool hasCompassKeys(int fd)
     }
 
     return testBit(key_bits, KEY_ESC) || testBit(key_bits, KEY_ENTER) || testBit(key_bits, KEY_KPENTER) ||
+           testBit(key_bits, KEY_HELP) ||
            testBit(key_bits, KEY_UP) || testBit(key_bits, KEY_DOWN) || testBit(key_bits, KEY_LEFT) ||
            testBit(key_bits, KEY_RIGHT) || testBit(key_bits, KEY_4) || testBit(key_bits, KEY_5) ||
            testBit(key_bits, KEY_6) || testBit(key_bits, KEY_7) || testBit(key_bits, KEY_8);
@@ -256,6 +258,8 @@ uint32_t CompassKeypad::translateKey(uint16_t code) const
             return LV_KEY_LEFT;
         case KEY_RIGHT:
             return LV_KEY_RIGHT;
+        case KEY_HELP:
+            return compass_key::Help;
         case KEY_SPACE:
             return ' ';
         case KEY_4:
