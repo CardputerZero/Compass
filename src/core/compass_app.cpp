@@ -94,12 +94,6 @@ void CompassApp::onLvglKey(uint32_t lv_key, const char* utf8)
         return;
     }
 
-    // SDL has no Fn layer; accept H as the desktop equivalent of Fn+H.
-    if (utf8 && (utf8[0] == 'h' || utf8[0] == 'H')) {
-        onKey(compass_key::Help);
-        return;
-    }
-
     if (utf8 && utf8[0] >= '0' && utf8[0] <= '9') {
         onKey(static_cast<uint32_t>(utf8[0]));
     }

@@ -68,7 +68,7 @@ HelpView::HelpView(lv_obj_t* parent)
     lv_obj_set_style_text_font(footer, &font_chivo_mono_medium_12, LV_PART_MAIN);
     lv_obj_set_style_text_color(footer, lv_color_hex(kFooterColor), LV_PART_MAIN);
     lv_obj_set_style_text_align(footer, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
-    lv_label_set_text(footer, "Esc / fn+H: close");
+    lv_label_set_text(footer, "KEY_HELP / Esc: close");
     lv_obj_align(footer, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
 
     lv_obj_add_flag(_overlay, LV_OBJ_FLAG_HIDDEN);
