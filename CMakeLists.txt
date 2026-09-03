@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(M5CardputerZeroCompass VERSION 0.2.2 LANGUAGES C CXX ASM)
+project(M5CardputerZeroCompass VERSION 0.2.3 LANGUAGES C CXX ASM)
 
 option(COMPASS_USE_SDL "Use LVGL's SDL backend for desktop testing" ON)
 option(COMPASS_CONVERT_ASSETS "Convert image assets during CMake configure" ON)
