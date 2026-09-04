@@ -37,10 +37,9 @@ bool hasCompassKeys(int fd)
     }
 
     return testBit(key_bits, KEY_ESC) || testBit(key_bits, KEY_ENTER) || testBit(key_bits, KEY_KPENTER) ||
-           testBit(key_bits, KEY_HELP) ||
-           testBit(key_bits, KEY_UP) || testBit(key_bits, KEY_DOWN) || testBit(key_bits, KEY_LEFT) ||
-           testBit(key_bits, KEY_RIGHT) || testBit(key_bits, KEY_4) || testBit(key_bits, KEY_5) ||
-           testBit(key_bits, KEY_6) || testBit(key_bits, KEY_7) || testBit(key_bits, KEY_8);
+           testBit(key_bits, KEY_HELP) || testBit(key_bits, KEY_UP) || testBit(key_bits, KEY_DOWN) ||
+           testBit(key_bits, KEY_LEFT) || testBit(key_bits, KEY_RIGHT) || testBit(key_bits, KEY_4) ||
+           testBit(key_bits, KEY_5) || testBit(key_bits, KEY_6) || testBit(key_bits, KEY_7) || testBit(key_bits, KEY_8);
 }
 
 bool envEnabled(const char* name, bool fallback)
@@ -234,10 +233,13 @@ void CompassKeypad::pushKeyEvent(uint16_t code, int32_t value)
     }
 
     const bool pressed = value == 1;
-    _pending_keys.push_back({key, pressed});
+    bool consumed      = false;
+    if (_key_callback) {
+        consumed = _key_callback(key, keyUtf8(key), pressed);
+    }
 
-    if (pressed && _key_callback) {
-        _key_callback(key, keyUtf8(key));
+    if (!consumed) {
+        _pending_keys.push_back({key, pressed});
     }
 }
 

@@ -32,7 +32,7 @@ HelpView::HelpView(lv_obj_t* parent)
     lv_obj_clear_flag(_overlay, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* panel = lv_obj_create(_overlay);
-    lv_obj_set_size(panel, 286, 122);
+    lv_obj_set_size(panel, 286, 142);
     lv_obj_set_align(panel, LV_ALIGN_CENTER);
     lv_obj_set_style_bg_color(panel, lv_color_hex(kPanelColor), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, LV_PART_MAIN);
@@ -68,7 +68,11 @@ HelpView::HelpView(lv_obj_t* parent)
     lv_obj_set_style_text_font(footer, &font_chivo_mono_medium_12, LV_PART_MAIN);
     lv_obj_set_style_text_color(footer, lv_color_hex(kFooterColor), LV_PART_MAIN);
     lv_obj_set_style_text_align(footer, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
+#if LV_USE_SDL
+    lv_label_set_text(footer, "KEY_HELP / H / Esc: close");
+#else
     lv_label_set_text(footer, "KEY_HELP / Esc: close");
+#endif
     lv_obj_align(footer, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
 
     lv_obj_add_flag(_overlay, LV_OBJ_FLAG_HIDDEN);

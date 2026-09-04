@@ -25,6 +25,7 @@ public:
     void start();
     void onKey(uint32_t key);
     void onLvglKey(uint32_t lv_key, const char* utf8);
+    bool onLvglKeyState(uint32_t lv_key, const char* utf8, bool pressed);
     void tick(uint32_t nowMs);
 
     bool quitRequested() const
@@ -41,11 +42,17 @@ private:
     CompassView _compass_view;
     CalibrationView _calibration_view;
     HelpView _help_view;
+    lv_obj_t* _exit_hint      = nullptr;
     ViewModel* _current_vm    = nullptr;
     View* _current_view       = nullptr;
     lv_group_t* _input_group  = nullptr;
     size_t _route_observer_id = 0;
     bool _quit_requested      = false;
+    bool _esc_pressed         = false;
+    bool _esc_long_consumed   = false;
+    bool _esc_exit_armed      = false;
+    bool _help_pressed        = false;
+    uint32_t _esc_pressed_at  = 0;
 
     std::array<ViewModel*, 2> _view_models;
     std::array<View*, 2> _views;
@@ -54,6 +61,10 @@ private:
     View* viewFor(PageId page);
     void setupInputGroup();
     void setCurrentPage(PageId page);
+    void createExitHint();
+    void showExitHint();
+    void hideExitHint();
+    void releaseEscPress();
     static void onRouteChanged(void* context, const PageId& page);
     static void onKeyboardEvent(lv_event_t* event);
 };

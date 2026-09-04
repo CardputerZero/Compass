@@ -7,12 +7,15 @@ namespace compass {
 
 namespace {
 
-constexpr int32_t kProgressTrackWidth  = 126;
-constexpr int32_t kProgressTrackHeight = 3;
-constexpr uint32_t kTitleColor         = 0xFFFFFF;
-constexpr uint32_t kHintColor          = 0xF2F2F2;
-constexpr uint32_t kProgressTrackColor = 0x333333;
-constexpr uint32_t kProgressFillColor  = 0x53D671;
+constexpr int32_t kProgressTrackWidth   = 126;
+constexpr int32_t kProgressTrackHeight  = 3;
+constexpr uint32_t kBackgroundColor     = 0x000000;
+constexpr uint32_t kDoneBackgroundColor = 0x18A058;
+constexpr uint32_t kHintColor           = 0xF2F2F2;
+constexpr uint32_t kProgressTrackColor  = 0x333333;
+constexpr uint32_t kProgressFillColor   = 0x53D671;
+constexpr uint32_t kDoneTrackColor      = 0x126A3F;
+constexpr uint32_t kDoneFillColor       = 0xB5FFD0;
 
 }  // namespace
 
@@ -31,7 +34,7 @@ void CalibrationView::onEnter(lv_obj_t* parent)
 
     _root = std::make_unique<smooth_ui_toolkit::lvgl_cpp::Container>(parent);
     _root->setSize(lv_pct(100), lv_pct(100));
-    _root->setBgColor(lv_color_hex(0x000000));
+    _root->setBgColor(lv_color_hex(kBackgroundColor));
     _root->setBgOpa(LV_OPA_COVER);
     _root->setBorderWidth(0);
     _root->setPaddingAll(0);
@@ -102,9 +105,15 @@ void CalibrationView::tick(uint32_t nowMs)
 
 void CalibrationView::renderState(CalibrationState state)
 {
-    if (!_hint_label) {
+    if (!_root || !_hint_label || !_progress_track || !_progress_fill) {
         return;
     }
+
+    const bool done = state == CalibrationState::Done;
+    _root->setBgColor(lv_color_hex(done ? kDoneBackgroundColor : kBackgroundColor));
+    _hint_label->setTextColor(lv_color_hex(done ? 0xFFFFFF : kHintColor));
+    _progress_track->setBgColor(lv_color_hex(done ? kDoneTrackColor : kProgressTrackColor));
+    _progress_fill->setBgColor(lv_color_hex(done ? kDoneFillColor : kProgressFillColor));
 
     switch (state) {
         case CalibrationState::Idle:

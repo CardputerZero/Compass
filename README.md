@@ -107,8 +107,8 @@ COMPASS_CALIBRATION_PATH=./calibration.conf ./dist/M5CardputerZero-Compass
 
 Key controls:
 
-- Compass page: `8` expand/collapse sensor info, `KEY_HELP` open help, `Esc` exit
-- Help overlay: `KEY_HELP` or `Esc` close
+- Compass page: `8` expand/collapse sensor info, `KEY_HELP` open help (`H` on SDL), hold `Esc` to exit
+- Help overlay: `KEY_HELP` or `H` (SDL) or `Esc` close
 - Expanded info: `7` open calibration, `8` collapse sensor info
 - Calibration page: `6` or Enter start/save calibration, `4` or Esc back
 
@@ -126,5 +126,5 @@ build and produces an `arm64` APPLaunch package.
 The generated package is written to `dist/`:
 
 ```text
-dist/m5cardputerzero-compass_0.1.1_m5stack1_arm64.deb
+dist/m5cardputerzero-compass_0.2.4_m5stack1_arm64.deb
 ```
