@@ -23,9 +23,15 @@ void CalibrationViewModel::onKey(uint32_t key)
     switch (key) {
         case '4':
         case '\x1b':
-            _router.back();
+            if (!required()) {
+                _router.back();
+            }
             break;
         case '6':
+            if (required() && _model.state().get() == CalibrationState::Idle) {
+                break;
+            }
+            [[fallthrough]];
         case '\r':
         case '\n':
             if (_model.state().get() == CalibrationState::Done) {

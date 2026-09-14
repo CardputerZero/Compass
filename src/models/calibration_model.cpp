@@ -82,17 +82,6 @@ bool envValue(const char* key, std::filesystem::path& path)
     return true;
 }
 
-#if !COMPASS_USE_MOCK_IMU
-std::filesystem::path defaultConfigDir()
-{
-    const char* home = std::getenv("HOME");
-    if (home && home[0] != '\0') {
-        return std::filesystem::path(home) / ".config" / "Compass";
-    }
-    return "/tmp/Compass";
-}
-#endif
-
 bool configFloat(const std::unordered_map<std::string, std::string>& values, const char* key, float& value)
 {
     const auto it = values.find(key);
@@ -602,11 +591,7 @@ std::filesystem::path CalibrationModel::configPath()
         return path / kCalibrationFileName;
     }
 
-#if COMPASS_USE_MOCK_IMU
-    return kCalibrationFileName;
-#else
-    return defaultConfigDir() / kCalibrationFileName;
-#endif
+    return std::filesystem::path("/tmp/Compass") / kCalibrationFileName;
 }
 
 bool CalibrationModel::load(CompassCalibration& calibration)

@@ -32,12 +32,26 @@ void CompassApp::start()
     lv_obj_set_style_bg_color(lv_screen_active(), lv_color_hex(0x000000), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(lv_screen_active(), LV_OPA_COVER, LV_PART_MAIN);
     setupInputGroup();
+    if (_calibration_vm.required()) {
+        _router.replace(PageId::Calibration);
+    }
     _route_observer_id = _router.currentPage().observe(this, onRouteChanged);
     setCurrentPage(_router.page());
 }
 
 void CompassApp::onKey(uint32_t key)
 {
+    if (_calibration_vm.required() && !_help_view.visible()) {
+        if (key == '\x1b') {
+            _quit_requested = true;
+            return;
+        }
+        if (_calibration_vm.state().get() == CalibrationState::Idle) {
+            _calibration_vm.onKey(key);
+            return;
+        }
+    }
+
     if (key == compass_key::Help) {
         _help_view.toggle();
         return;

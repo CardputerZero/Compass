@@ -8,7 +8,8 @@ Compass app for M5Stack CardputerZero.
 - Show pitch/roll bubble level overlay
 - Expand live accelerometer, gyroscope, and magnetometer values
 - Calibrate hard-iron and cross-axis magnetic distortion with full 3D rotation
-- Save and load calibration data between launches
+- Save and load calibration data between launches within the same device boot
+- Require calibration on first use and confirm when calibration is saved
 
 ## Dependencies
 
@@ -96,10 +97,19 @@ Run the SDL build:
 ./dist/M5CardputerZero-Compass
 ```
 
-Calibration data is saved to `calibration.conf` for SDL builds. Packaged
-CardputerZero launches use `$HOME/.config/Compass/calibration.conf` by default.
+Calibration data is saved to `/tmp/Compass/calibration.conf` by default for both
+SDL and CardputerZero builds. Launches within the same device boot reuse this
+data. When the device reboots and `/tmp` is cleared, calibration is required again.
+If no valid saved calibration exists, a required-calibration dialog appears.
+Press Enter to start, then rotate the device through every direction, away from
+metal and magnets. Calibration must be saved successfully before entering the
+compass. Esc exits the app during this required flow; it does not skip calibration.
+The completion dialog confirms that calibration was saved; press Enter to return
+to the compass. Later launches reuse the saved calibration without prompting
+until the temporary data is cleared.
 
-Override the calibration path:
+Override the calibration path for development (a persistent path keeps data
+across reboots):
 
 ```bash
 COMPASS_CALIBRATION_PATH=./calibration.conf ./dist/M5CardputerZero-Compass
