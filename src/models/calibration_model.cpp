@@ -15,11 +15,11 @@ namespace compass {
 namespace {
 
 constexpr uint32_t kAutoFinishMs              = 20000;
+constexpr uint32_t kRetryFinishMs             = 2000;
 constexpr uint32_t kMinimumCalibrationSamples = 120;
 constexpr size_t kMaximumCalibrationSamples   = 2048;
 constexpr float kMinimumAxisSpan              = 0.40f;
 constexpr float kCoverageTarget               = 0.8f;
-constexpr float kMinimumCoverage              = 0.65f;
 constexpr size_t kMinimumCoveredOctants       = 8;
 constexpr double kMaximumMatrixCondition      = 10.0;
 constexpr double kMaximumNormalizedResidual   = 0.12;
@@ -33,6 +33,7 @@ using Matrix3 = std::array<std::array<double, 3>, 3>;
 using Vector3 = std::array<double, 3>;
 
 struct FitMetrics {
+    const char* hint = "Rotate on all three axes";
     double normalized_residual = 0.0;
     double mean_field_gauss    = 0.0;
     double matrix_condition    = 0.0;
@@ -324,9 +325,7 @@ bool fitEllipsoid(const std::vector<Axis3>& samples, const Axis3& minimum, const
     }
 
     const Axis3 span{maximum.x - minimum.x, maximum.y - minimum.y, maximum.z - minimum.z};
-    const float coverage = std::min({span.x, span.y, span.z}) / kCoverageTarget;
-    if (span.x < kMinimumAxisSpan || span.y < kMinimumAxisSpan || span.z < kMinimumAxisSpan ||
-        coverage < kMinimumCoverage) {
+    if (span.x < kMinimumAxisSpan || span.y < kMinimumAxisSpan || span.z < kMinimumAxisSpan) {
         error = "insufficient 3D coverage";
         return false;
     }
@@ -464,15 +463,18 @@ bool fitEllipsoid(const std::vector<Axis3>& samples, const Axis3& minimum, const
 
     if (metrics.covered_octants < kMinimumCoveredOctants) {
         error = "too few magnetic field octants covered";
+        metrics.hint = "Turn over and rotate all sides";
         return false;
     }
     if (!std::isfinite(metrics.mean_field_gauss) || metrics.mean_field_gauss < kMinimumFieldGauss ||
         metrics.mean_field_gauss > kMaximumFieldGauss) {
         error = "corrected magnetic field magnitude is implausible";
+        metrics.hint = "Move away from metal/magnets";
         return false;
     }
     if (!std::isfinite(metrics.normalized_residual) || metrics.normalized_residual > kMaximumNormalizedResidual) {
         error = "ellipsoid residual is too high";
+        metrics.hint = "Move away from metal/magnets";
         return false;
     }
 
@@ -518,18 +520,21 @@ bool CalibrationModel::finish()
     if (_state.get() != CalibrationState::Running) {
         return false;
     }
-
-    CompassCalibration calibration;
-    if (!buildCalibration(calibration)) {
-        _status.set("Need more motion");
+    if (!_sensor_error.empty()) {
+        _status.set(_sensor_error);
         return false;
     }
 
+    CompassCalibration calibration;
+    std::string hint;
+    if (!buildCalibration(calibration, hint)) {
+        _status.set(hint);
+        return false;
+    }
     if (!save(calibration)) {
         _status.set("Failed to save calibration");
         return false;
     }
-
     _calibration = calibration;
     _progress.set(1.0f);
     _status.set("Saved");
@@ -549,14 +554,16 @@ void CalibrationModel::tick(uint32_t nowMs)
         return;
     }
 
-    if (_start_ms == 0) {
+    if (!_timer_started) {
         _start_ms = nowMs;
+        _timer_started = true;
         return;
     }
 
-    if (nowMs - _start_ms >= kAutoFinishMs) {
+    if (nowMs - _start_ms >= (_retry_finish ? kRetryFinishMs : kAutoFinishMs)) {
         if (!finish()) {
             _start_ms = nowMs;
+            _retry_finish = true;
         }
     }
 }
@@ -566,16 +573,22 @@ void CalibrationModel::updateSample(const CompassSample& sample)
     if (_state.get() != CalibrationState::Running) {
         return;
     }
+    const std::string sensor_error = !sample.available
+                                         ? (sample.status.empty() ? "Sensor unavailable" : sample.status)
+                                         : (!isUsableVector(sample.rawMag) ? "No valid magnetic data" : "");
+    if (sensor_error != _sensor_error) {
+        _sensor_error = sensor_error;
+        _status.set(_sensor_error.empty() ? "Rotate through every direction" : _sensor_error);
+    }
+    if (!_sensor_error.empty()) {
+        return;
+    }
     if (sample.sequence != 0 && sample.sequence == _last_sample_sequence) {
         return;
     }
     if (sample.sequence != 0) {
         _last_sample_sequence = sample.sequence;
     }
-    if (!sample.available || !isUsableVector(sample.rawMag)) {
-        return;
-    }
-
     captureMag(sample.rawMag);
     updateProgress();
 }
@@ -720,6 +733,9 @@ void CalibrationModel::resetCapture()
     _start_ms             = 0;
     _last_sample_sequence = 0;
     _next_sample_index    = 0;
+    _timer_started       = false;
+    _retry_finish        = false;
+    _sensor_error.clear();
     _mag_samples.clear();
     _mag_samples.reserve(kMaximumCalibrationSamples);
 }
@@ -735,8 +751,9 @@ void CalibrationModel::captureMag(const Axis3& mag)
     ++_sample_count;
 }
 
-bool CalibrationModel::buildCalibration(CompassCalibration& calibration) const
+bool CalibrationModel::buildCalibration(CompassCalibration& calibration, std::string& hint) const
 {
+    hint = "Collecting samples: keep rotating";
     if (_mag_samples.size() < kMinimumCalibrationSamples) {
         spdlog::warn("CalibrationModel: fit rejected (samples={}): not enough samples", _mag_samples.size());
         return false;
@@ -751,7 +768,10 @@ bool CalibrationModel::buildCalibration(CompassCalibration& calibration) const
     FitMetrics metrics;
     std::string error;
     if (!fitEllipsoid(_mag_samples, minimum, maximum, calibration, metrics, error)) {
-        spdlog::warn("CalibrationModel: fit rejected (samples={}): {}", _mag_samples.size(), error);
+        hint = metrics.hint;
+        spdlog::warn("CalibrationModel: fit rejected (samples={}, span=[{:.3f},{:.3f},{:.3f}]G): {}",
+                     _mag_samples.size(), maximum.x - minimum.x, maximum.y - minimum.y, maximum.z - minimum.z,
+                     error);
         return false;
     }
 

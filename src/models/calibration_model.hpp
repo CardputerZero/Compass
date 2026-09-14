@@ -81,10 +81,13 @@ private:
     uint32_t _start_ms             = 0;
     uint32_t _last_sample_sequence = 0;
     std::size_t _next_sample_index = 0;
+    bool _timer_started           = false;
+    bool _retry_finish            = false;
+    std::string _sensor_error;
 
     void resetCapture();
     void captureMag(const Axis3& mag);
-    bool buildCalibration(CompassCalibration& calibration) const;
+    bool buildCalibration(CompassCalibration& calibration, std::string& hint) const;
     void updateProgress();
 };
 

@@ -353,6 +353,75 @@ void testDegenerateFitIsRejected()
     require(!std::filesystem::exists(path), "rejected fit does not replace saved calibration");
 
     unsetenv("COMPASS_CALIBRATION_PATH");
+    std::filesystem::remove(path);
+}
+
+void testWeakerFieldCompletesAfterRetry()
+{
+    const auto path = std::filesystem::temp_directory_path() / "compass_calibration_weak_field_test.conf";
+    std::filesystem::remove(path);
+    setenv("COMPASS_CALIBRATION_PATH", path.c_str(), 1);
+
+    compass::CalibrationModel model;
+    model.start();
+    model.tick(0);
+    model.tick(20000);
+    require(model.state().get() == compass::CalibrationState::Running, "empty capture cannot complete");
+    require(model.status().get() == "Collecting samples: keep rotating", "empty capture explains missing samples");
+
+    const Matrix3 correction{{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}};
+    for (const auto& raw : makeSphereSamples({}, correction)) {
+        compass::CompassSample sample;
+        sample.available = true;
+        sample.rawMag = {raw.x * 0.5f, raw.y * 0.5f, raw.z * 0.5f};
+        model.updateSample(sample);
+    }
+    require(model.progress().get() < 0.65f, "weaker field reproduces the former fixed progress rejection");
+    model.tick(21999);
+    require(model.state().get() == compass::CalibrationState::Running, "retry observes the shorter interval");
+    model.tick(22000);
+    require(model.state().get() == compass::CalibrationState::Done,
+            "full 0.24 gauss rotation passes within two seconds of the first failed check");
+    require(std::filesystem::exists(path), "automatic retry saves the weaker-field calibration");
+    model.stop();
+    model.start();
+    model.tick(23000);
+    model.tick(25000);
+    require(model.status().get() == "Rotate through every direction", "new capture resets the retry timer");
+
+    unsetenv("COMPASS_CALIBRATION_PATH");
+    std::filesystem::remove(path);
+}
+
+void testSensorFailuresAreVisible()
+{
+    compass::CalibrationModel model;
+    compass::CompassSample sample;
+    sample.status = "BMM150 IIO device not found";
+    model.start();
+    model.updateSample(sample);
+    require(model.status().get() == sample.status, "sensor initialization failure is visible during calibration");
+    require(!model.finish() && model.status().get() == sample.status,
+            "finish preserves the sensor error instead of requesting more motion");
+    require(model.sampleCount() == 0, "unavailable sensor does not count samples");
+
+    sample.available = true;
+    model.updateSample(sample);
+    require(model.status().get() == "No valid magnetic data", "zero magnetic data is diagnosed");
+    sample.sequence = 1;
+    sample.rawMag = {0.1f, 0.2f, 0.3f};
+    model.updateSample(sample);
+    require(model.sampleCount() == 1 && model.status().get() == "Rotate through every direction",
+            "sampling recovers after valid magnetic data arrives");
+
+    sample.available = false;
+    sample.status = "Failed to read BMI270/BMM150 nine-axis data";
+    model.updateSample(sample);
+    require(model.status().get() == sample.status, "read failure is visible even with an unchanged sequence");
+    sample.available = true;
+    sample.sequence = 2;
+    model.updateSample(sample);
+    require(model.sampleCount() == 2, "capture continues after a read error");
 }
 
 void testIncompleteOctantCoverageIsRejected()
@@ -397,6 +466,7 @@ void testIncompleteOctantCoverageIsRejected()
     require(!std::filesystem::exists(path), "incomplete directional coverage does not replace saved calibration");
 
     unsetenv("COMPASS_CALIBRATION_PATH");
+    std::filesystem::remove(path);
 }
 
 void testRollingSampleWindowAcceptsLaterCoverage()
@@ -458,6 +528,8 @@ int main()
     testV2RoundTripAndValidation();
     testFullEllipsoidFit();
     testDegenerateFitIsRejected();
+    testWeakerFieldCompletesAfterRetry();
+    testSensorFailuresAreVisible();
     testIncompleteOctantCoverageIsRejected();
     testRollingSampleWindowAcceptsLaterCoverage();
 

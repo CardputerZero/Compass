@@ -25,6 +25,11 @@ public:
         return !_model.calibration().valid;
     }
 
+    uint32_t sampleCount() const
+    {
+        return _model.sampleCount();
+    }
+
     smooth_ui_toolkit::SingleObservable<CalibrationState>& state()
     {
         return _model.state();
