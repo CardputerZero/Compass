@@ -11,7 +11,7 @@ namespace compass {
 
 class CompassKeypad {
 public:
-    using KeyCallback = std::function<void(uint32_t, const char*)>;
+    using KeyCallback = std::function<bool(uint32_t, const char*, bool)>;
 
     CompassKeypad() = default;
     ~CompassKeypad();

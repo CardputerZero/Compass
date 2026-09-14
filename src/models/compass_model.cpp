@@ -376,10 +376,24 @@ public:
         const float pitch_rad   = pitch * kDegToRad;
         const float roll_rad    = roll * kDegToRad;
 
-        const Axis3 screen_accel     = mockWorldToScreen({0.0f, 0.0f, 9.81f}, heading_rad, pitch_rad, roll_rad);
-        const Axis3 screen_mag_gauss = mockWorldToScreen({0.0f, 0.42f, -0.18f}, heading_rad, pitch_rad, roll_rad);
-        const Axis3 raw_accel        = screenToBmi270(screen_accel);
-        const Axis3 raw_mag          = screenToBmm150(screen_mag_gauss);
+        const Axis3 screen_accel = mockWorldToScreen({0.0f, 0.0f, 9.81f}, heading_rad, pitch_rad, roll_rad);
+        const Axis3 raw_accel    = screenToBmi270(screen_accel);
+
+        // Keep the desktop magnetometer deterministic and calibration-friendly.
+        // A gentle Euler tilt does not move the fixed field through all eight
+        // octants, so the calibration progress would remain stuck forever.
+        // This sphere sweep preserves a smooth heading while guaranteeing
+        // enough 3D coverage for the same fit used by the hardware backend.
+        constexpr float kMockFieldRadius = 0.48f;
+        const float mock_field_x         = std::sin(t * 0.6f);
+        const float mock_field_y         = std::sin(t * 1.0f + 1.3f);
+        const float mock_field_z         = std::sin(t * 1.4f + 2.1f);
+        const float mock_field_norm      = std::sqrt(
+            std::max(1.0e-6f, mock_field_x * mock_field_x + mock_field_y * mock_field_y + mock_field_z * mock_field_z));
+        const float mock_field_scale = kMockFieldRadius / mock_field_norm;
+        const Axis3 screen_mag_gauss{mock_field_x * mock_field_scale, mock_field_y * mock_field_scale,
+                                     mock_field_z * mock_field_scale};
+        const Axis3 raw_mag = screenToBmm150(screen_mag_gauss);
 
         sample.source    = CompassDataSource::Mock;
         sample.available = true;

@@ -33,7 +33,8 @@ int main()
 
 #if !LV_USE_SDL
     compass::CompassKeypad keypad;
-    keypad.setKeyCallback([&app](uint32_t key, const char* utf8) { app.onLvglKey(key, utf8); });
+    keypad.setKeyCallback(
+        [&app](uint32_t key, const char* utf8, bool pressed) { return app.onLvglKeyState(key, utf8, pressed); });
     keypad.openDefault();
 #endif
 
