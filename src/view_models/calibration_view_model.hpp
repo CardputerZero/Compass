@@ -20,6 +20,16 @@ public:
     void onKey(uint32_t key) override;
     void tick(uint32_t nowMs) override;
 
+    bool required() const
+    {
+        return !_model.calibration().valid;
+    }
+
+    uint32_t sampleCount() const
+    {
+        return _model.sampleCount();
+    }
+
     smooth_ui_toolkit::SingleObservable<CalibrationState>& state()
     {
         return _model.state();

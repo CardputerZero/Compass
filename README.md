@@ -8,7 +8,8 @@ Compass app for M5Stack CardputerZero.
 - Show pitch/roll bubble level overlay
 - Expand live accelerometer, gyroscope, and magnetometer values
 - Calibrate hard-iron and cross-axis magnetic distortion with full 3D rotation
-- Save and load calibration data between launches
+- Save and load calibration data between launches within the same device boot
+- Require calibration on first use and confirm when calibration is saved
 
 ## Dependencies
 
@@ -96,10 +97,25 @@ Run the SDL build:
 ./dist/M5CardputerZero-Compass
 ```
 
-Calibration data is saved to `calibration.conf` for SDL builds. Packaged
-CardputerZero launches use `$HOME/.config/Compass/calibration.conf` by default.
+Calibration data is saved to `/tmp/Compass/calibration.conf` by default for both
+SDL and CardputerZero builds. Launches within the same device boot reuse this
+data. When the device reboots and `/tmp` is cleared, calibration is required again.
+If no valid saved calibration exists, a required-calibration dialog appears.
+Press Enter to start, then rotate the device through every direction, away from
+metal and magnets. Calibration must pass the quality checks and be saved before
+entering the compass. Esc exits the app during this required flow.
+The completion dialog confirms that calibration was saved; press Enter to return
+to the compass. Later launches reuse the saved calibration until temporary data
+is cleared.
+During calibration, coverage and captured sample count are shown below the progress
+bar. The first automatic check runs after 20 seconds; unsuccessful checks retry
+every 2 seconds while capture continues. Enter also attempts to finish and save.
+Turn the device over and rotate around all three axes when prompted. Sensor
+failures and magnetic interference have separate messages. Coverage is a motion
+indicator, not a countdown to completion.
 
-Override the calibration path:
+Override the calibration path for development (a persistent path keeps data
+across reboots):
 
 ```bash
 COMPASS_CALIBRATION_PATH=./calibration.conf ./dist/M5CardputerZero-Compass
@@ -110,7 +126,8 @@ Key controls:
 - Compass page: `8` expand/collapse sensor info, `KEY_HELP` open help (`H` on SDL), hold `Esc` to exit
 - Help overlay: `KEY_HELP` or `H` (SDL) or `Esc` close
 - Expanded info: `7` open calibration, `8` collapse sensor info
-- Calibration page: `6` or Enter start/save calibration, `4` or Esc back
+- Calibration page: `6` or Enter starts/saves calibration; Enter returns after success
+- Calibration page: `4` or Esc goes back for optional calibration; Esc exits during required calibration
 
 ## Package
 

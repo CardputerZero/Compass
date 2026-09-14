@@ -191,6 +191,21 @@ set_target_properties(${COMPASS_BIN_NAME} PROPERTIES
 )
 
 if(BUILD_TESTING)
+    set(COMPASS_TEST_APP_CPP ${COMPASS_CPP})
+    list(REMOVE_ITEM COMPASS_TEST_APP_CPP "${COMPASS_SRC_DIR}/main.cpp")
+    add_executable(compass_calibration_flow_tests
+        tests/calibration_flow_test.cpp
+        ${COMPASS_TEST_APP_CPP}
+        ${COMPASS_ASSET_C}
+    )
+    target_include_directories(compass_calibration_flow_tests PRIVATE "${COMPASS_SRC_DIR}")
+    target_compile_definitions(compass_calibration_flow_tests PRIVATE COMPASS_USE_MOCK_IMU=1)
+    target_link_libraries(compass_calibration_flow_tests PRIVATE
+        lvgl::lvgl smooth_ui_toolkit spdlog::spdlog Threads::Threads
+        ${COMPASS_SDL_LIBS} ${COMPASS_SYSTEM_LIBS}
+    )
+    add_test(NAME compass_calibration_flow COMMAND compass_calibration_flow_tests)
+
     add_executable(compass_pose_tests
         tests/compass_pose_test.cpp
         src/models/compass_pose.cpp

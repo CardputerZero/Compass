@@ -23,8 +23,14 @@ private:
     std::unique_ptr<smooth_ui_toolkit::lvgl_cpp::Container> _root;
     std::unique_ptr<smooth_ui_toolkit::lvgl_cpp::Image> _gesture_image;
     std::unique_ptr<smooth_ui_toolkit::lvgl_cpp::Label> _hint_label;
+    std::unique_ptr<smooth_ui_toolkit::lvgl_cpp::Label> _auto_check_label;
     std::unique_ptr<smooth_ui_toolkit::lvgl_cpp::Container> _progress_track;
     std::unique_ptr<smooth_ui_toolkit::lvgl_cpp::Container> _progress_fill;
+    std::unique_ptr<smooth_ui_toolkit::lvgl_cpp::Label> _progress_label;
+    std::unique_ptr<smooth_ui_toolkit::lvgl_cpp::Container> _notice_panel;
+    std::unique_ptr<smooth_ui_toolkit::lvgl_cpp::Label> _notice_title;
+    std::unique_ptr<smooth_ui_toolkit::lvgl_cpp::Label> _notice_body;
+    std::unique_ptr<smooth_ui_toolkit::lvgl_cpp::Label> _action_label;
 
     void renderState(CalibrationState state);
     void renderStatus(const std::string& status);

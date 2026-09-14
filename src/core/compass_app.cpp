@@ -69,12 +69,26 @@ void CompassApp::start()
     createExitHint();
     _help_view.hide();
     setupInputGroup();
+    if (_calibration_vm.required()) {
+        _router.replace(PageId::Calibration);
+    }
     _route_observer_id = _router.currentPage().observe(this, onRouteChanged);
     setCurrentPage(_router.page());
 }
 
 void CompassApp::onKey(uint32_t key)
 {
+    if (_calibration_vm.required() && !_help_view.visible()) {
+        if (key == '\x1b') {
+            _quit_requested = true;
+            return;
+        }
+        if (_calibration_vm.state().get() == CalibrationState::Idle) {
+            _calibration_vm.onKey(key);
+            return;
+        }
+    }
+
     if (key == compass_key::Help) {
         _help_view.toggle();
         return;
