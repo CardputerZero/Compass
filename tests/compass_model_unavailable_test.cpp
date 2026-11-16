@@ -1,6 +1,7 @@
 #include "models/compass_model.hpp"
 #include "view_models/compass_view_model.hpp"
 #include <cstdlib>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -104,6 +105,7 @@ int main()
 
     model.tick(5033);
     require(model.sample().get().available, "backend recovers after IIO nodes appear");
+    require(model.sample().get().magnetometerAvailable, "recovered nine-axis sample has magnetic data");
     require(model.sample().get().source == compass::CompassDataSource::Iio,
             "recovered sample identifies the IIO source");
     require(model.sample().get().sequence != 0, "recovered hardware sample has a sequence number");
@@ -112,16 +114,61 @@ int main()
 
     std::filesystem::remove(iio_root / "iio:device2" / "in_magn_x_raw");
     view_model.tick(5066);
-    require(!model.sample().get().available, "runtime IIO read failure publishes unavailable state");
-    require(model.sample().get().status.find("read") != std::string::npos,
-            "runtime IIO failure includes the read reason");
-    require(!view_model.infoExpanded().get(), "runtime sensor failure collapses the info panel");
+    require(model.sample().get().available && !model.sample().get().magnetometerAvailable,
+            "magnetometer read failure preserves six-axis availability");
+    require(model.sample().get().rawMag.x == 0 && model.sample().get().mag.y == 0 &&
+                model.sample().get().headingDeg == 0,
+            "magnetic failure clears stale magnetic data and heading");
+    require(view_model.infoExpanded().get(), "magnetic loss preserves the original expanded state");
+    view_model.onKey('7');
+    for (int i = 0; i < 3; ++i) {
+        view_model.onKey(' ');
+    }
+    require(router.page() == compass::PageId::Compass && view_model.infoExpanded().get() &&
+                view_model.magic().get() == 1,
+            "six-axis mode removes calibration and preserves other original interactions");
+    view_model.onKey('8');
+    require(!view_model.infoExpanded().get(), "six-axis mode retains the original collapse shortcut");
+    view_model.onKey('8');
+    require(view_model.infoExpanded().get(), "six-axis mode retains the original expand shortcut");
+    require(writeFile(iio_root / "iio:device0" / "in_accel_y_raw", "2500\n"), "six-axis data changes");
+    view_model.tick(5099);
+    require(model.sample().get().accel.x == 2.5f, "six-axis values continue updating without magnetic data");
 
     require(writeFile(iio_root / "iio:device2" / "in_magn_x_raw", "100\n"), "failed IIO channel is restored");
     model.tick(10065);
-    require(!model.sample().get().available, "runtime failure observes the retry interval");
+    require(model.sample().get().available && !model.sample().get().magnetometerAvailable,
+            "magnetic recovery observes the retry interval while six-axis data stays live");
     model.tick(10098);
-    require(model.sample().get().available, "runtime read failure recovers after the retry interval");
+    require(model.sample().get().available && model.sample().get().magnetometerAvailable,
+            "runtime magnetic read failure recovers after the retry interval");
+
+    std::filesystem::remove_all(iio_root / "iio:device2");
+    std::filesystem::rename(iio_root / "iio:device0", iio_root / "iio:device7");
+    {
+        compass::CompassModel six_axis_model;
+        const auto& first = six_axis_model.sample().get();
+        require(first.available && !first.magnetometerAvailable && first.accel.x == 2.5f,
+                "a device with only BMI270 starts with real six-axis data at a discovered IIO path");
+        const auto sequence = first.sequence;
+        require(writeFile(iio_root / "iio:device7" / "in_anglvel_z_raw", "123\n"), "gyro data changes");
+        six_axis_model.tick(33);
+        require(six_axis_model.sample().get().sequence > sequence &&
+                    std::abs(six_axis_model.sample().get().gyro.z - 0.123f) < 0.00001f,
+                "six-axis-only startup keeps publishing fresh gyro samples");
+
+        std::filesystem::remove(iio_root / "iio:device7" / "in_accel_x_raw");
+        six_axis_model.tick(66);
+        require(!six_axis_model.sample().get().available &&
+                    six_axis_model.sample().get().source == compass::CompassDataSource::Iio,
+                "BMI270 failure remains unavailable and never falls back to mock data");
+        require(writeFile(iio_root / "iio:device7" / "in_accel_x_raw", "0\n"), "accel channel restored");
+        six_axis_model.tick(5065);
+        require(!six_axis_model.sample().get().available, "six-axis failure observes retry delay");
+        six_axis_model.tick(5098);
+        require(six_axis_model.sample().get().available && !six_axis_model.sample().get().magnetometerAvailable,
+                "BMI270 read failure recovers into six-axis mode");
+    }
 
     std::filesystem::remove_all(root, error);
     unsetenv("COMPASS_IIO_SYSFS_ROOT");

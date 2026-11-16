@@ -27,6 +27,7 @@ constexpr int32_t kCrossThickness                    = 1;
 constexpr int32_t kBubbleMinSize                     = 44;
 constexpr int32_t kBubbleMaxSize                     = 58;
 constexpr int32_t kBubbleTravel                      = 26;
+constexpr float kSixAxisTiltScale                    = 1.5f;
 constexpr uint32_t kBubbleMotionIntervalMs           = 50;
 constexpr uint32_t kCrossColor                       = 0x5D5D5D;
 constexpr uint32_t kDirectionLabelColor              = 0xFFFFFF;
@@ -64,6 +65,7 @@ constexpr std::array<const char*, 4> kDirectionTexts = {"N", "E", "S", "W"};
 constexpr std::array<float, 4> kDirectionAngles      = {0.0f, 90.0f, 180.0f, 270.0f};
 constexpr std::array<int32_t, 3> kInfoPanelY         = {11, 52, 94};
 constexpr std::array<int32_t, 3> kInfoRowY           = {0, 14, 28};
+constexpr std::array<int32_t, 2> kSixAxisPanelY      = {32, 73};
 constexpr float kAccelRange                          = 10.0f;
 constexpr float kGyroRange                           = 1.0f;
 constexpr float kMagRange                            = 50.0f;
@@ -208,6 +210,11 @@ public:
 
     void setSample(const CompassSample& sample)
     {
+        _tilt_scale = sample.magnetometerAvailable ? 1.0f : kSixAxisTiltScale;
+        _dial->setHidden(!sample.magnetometerAvailable);
+        for (auto& direction : _direction_labels) {
+            direction->setHidden(!sample.magnetometerAvailable);
+        }
         const float heading  = sample.available ? sample.headingDeg : kCompassUnavailableHeading;
         const float bubble_x = sample.available ? sample.bubbleX : kCompassUnavailableBubblePos;
         const float bubble_y = sample.available ? sample.bubbleY : kCompassUnavailableBubblePos;
@@ -260,6 +267,7 @@ private:
     float _bubble_motion            = 0.0f;
     uint32_t _last_bubble_motion_ms = 0;
     bool _heading_initialized       = false;
+    float _tilt_scale               = 1.0f;
 
     void applyState()
     {
@@ -277,11 +285,18 @@ private:
         const int32_t ball_size =
             kBubbleMinSize + static_cast<int32_t>(std::round((kBubbleMaxSize - kBubbleMinSize) * bubble_size_value));
         const int32_t offset_x =
-            static_cast<int32_t>(std::round(kBubbleTravel * clampNormalized(_bubble_x.directValue())));
+            static_cast<int32_t>(std::round(kBubbleTravel * _tilt_scale * clampNormalized(_bubble_x.directValue())));
         const int32_t offset_y =
-            static_cast<int32_t>(std::round(kBubbleTravel * clampNormalized(_bubble_y.directValue())));
+            static_cast<int32_t>(std::round(kBubbleTravel * _tilt_scale * clampNormalized(_bubble_y.directValue())));
 
-        _ball->setSize(ball_size, ball_size);
+        const int32_t scaled_ball_size = static_cast<int32_t>(std::round(ball_size * _tilt_scale));
+        const int32_t large_cross_size = static_cast<int32_t>(std::round(kLargeCrossSize * _tilt_scale));
+        const int32_t small_cross_size = static_cast<int32_t>(std::round(kSmallCrossSize * _tilt_scale));
+        _large_cross_horizontal->setSize(large_cross_size, kCrossThickness);
+        _large_cross_vertical->setSize(kCrossThickness, large_cross_size);
+        _small_cross_horizontal->setSize(small_cross_size, kCrossThickness);
+        _small_cross_vertical->setSize(kCrossThickness, small_cross_size);
+        _ball->setSize(scaled_ball_size, scaled_ball_size);
         _ball->align(LV_ALIGN_CENTER, offset_x, offset_y);
         _small_cross_horizontal->align(LV_ALIGN_CENTER, offset_x, offset_y);
         _small_cross_vertical->align(LV_ALIGN_CENTER, offset_x, offset_y);
@@ -368,6 +383,12 @@ public:
         if (_panel) {
             _panel->setPos(x, _y);
         }
+    }
+
+    void setY(int32_t y)
+    {
+        _y = y;
+        _panel->setY(y);
     }
 
     void setVisible(bool visible)
@@ -528,11 +549,14 @@ public:
     {
         _accel_panel->setVisible(visible);
         _gyro_panel->setVisible(visible);
-        _mag_panel->setVisible(visible);
+        _mag_panel->setVisible(visible && _mag_available);
     }
 
     void setSample(const CompassSample& sample)
     {
+        _mag_available = sample.magnetometerAvailable;
+        _accel_panel->setY(_mag_available ? kInfoPanelY[0] : kSixAxisPanelY[0]);
+        _gyro_panel->setY(_mag_available ? kInfoPanelY[1] : kSixAxisPanelY[1]);
         _accel_panel->setValues(sample.accel);
         _gyro_panel->setValues(sample.gyro);
         _mag_panel->setValues(sample.mag);
@@ -553,6 +577,7 @@ private:
     std::unique_ptr<CompassInfoPanel> _mag_panel;
     smooth_ui_toolkit::AnimateValue _x{kInfoPanelHiddenOffsetX};
     bool _expanded = false;
+    bool _mag_available = true;
 
     void applyX()
     {
@@ -947,8 +972,9 @@ void CompassView::tick(uint32_t nowMs)
 
 void CompassView::renderSample(const CompassSample& sample)
 {
-    const bool unavailable = !sample.available && !sample.status.empty();
+    const bool unavailable  = !sample.available;
     _compass_available     = !unavailable;
+    _magnetometer_available = sample.magnetometerAvailable;
 
     if (_compass_dial) {
         _compass_dial->setSample(sample);
@@ -987,10 +1013,16 @@ void CompassView::renderInfoExpanded(bool expanded)
     }
 
     if (expanded) {
-        _key_bar->setItems({
-            {'7', &image_icon_calibration},
-            {'8', &image_icon_back},
-        });
+        if (_magnetometer_available) {
+            _key_bar->setItems({
+                {'7', &image_icon_calibration},
+                {'8', &image_icon_back},
+            });
+        } else {
+            _key_bar->setItems({
+                {'8', &image_icon_back},
+            });
+        }
         return;
     }
 

@@ -32,6 +32,7 @@ private:
     std::unique_ptr<MagicView> _magic_view;
     uint32_t _magic_serial_seen = 0;
     bool _compass_available     = true;
+    bool _magnetometer_available = false;
 
     void renderSample(const CompassSample& sample);
     void renderInfoExpanded(bool expanded);

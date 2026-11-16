@@ -16,6 +16,8 @@ enum class CompassDataSource {
 struct CompassSample {
     CompassDataSource source = CompassDataSource::Mock;
     bool available           = false;
+    // Six-axis availability is independent of the optional magnetometer.
+    bool magnetometerAvailable = false;
     uint32_t sequence        = 0;
     std::string status;
     float headingDeg = 0.0f;

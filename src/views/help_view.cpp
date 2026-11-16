@@ -58,9 +58,10 @@ HelpView::HelpView(lv_obj_t* parent)
     lv_obj_set_style_text_color(body, lv_color_hex(kBodyColor), LV_PART_MAIN);
     lv_label_set_long_mode(body, LV_LABEL_LONG_WRAP);
     lv_label_set_text(body,
-                      "Electronic compass and real-time IMU data.\n"
-                      "Calibration is required before use.\n\n"
-                      "Number key 8: more");
+                      "Compass and live IMU data.\n"
+                      "Compass requires calibration.\n"
+                      "No magnetometer: tilt + six-axis.\n\n"
+                      "Compass: 8 for more");
     lv_obj_align(body, LV_ALIGN_TOP_LEFT, 0, 23);
 
     lv_obj_t* footer = lv_label_create(panel);

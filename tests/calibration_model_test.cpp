@@ -34,6 +34,7 @@ void feedMagneticSpan(compass::CalibrationModel& model, float spanGauss)
 {
     compass::CompassSample sample;
     sample.available = true;
+    sample.magnetometerAvailable = true;
 
     for (int i = 0; i < 120; ++i) {
         const int octant = i % 8;
@@ -202,6 +203,7 @@ void testProgressRequiresDirectionalCoverage()
     compass::CalibrationModel model;
     compass::CompassSample sample;
     sample.available = true;
+    sample.magnetometerAvailable = true;
 
     model.start();
     for (int index = 0; index < 120; ++index) {
@@ -219,6 +221,7 @@ void testDuplicateHardwareSamplesAreIgnored()
     compass::CalibrationModel model;
     compass::CompassSample sample;
     sample.available = true;
+    sample.magnetometerAvailable = true;
     sample.sequence  = 42;
     sample.rawMag    = {0.2f, 0.3f, -0.1f};
 
@@ -285,6 +288,7 @@ void testFullEllipsoidFit()
     for (const auto& raw : samples) {
         compass::CompassSample sample;
         sample.available = true;
+        sample.magnetometerAvailable = true;
         sample.rawMag    = raw;
         model.updateSample(sample);
     }
@@ -344,6 +348,7 @@ void testDegenerateFitIsRejected()
         const float angle = static_cast<float>(index) * 0.1f;
         compass::CompassSample sample;
         sample.available = true;
+        sample.magnetometerAvailable = true;
         sample.rawMag    = {0.5f * std::cos(angle), 0.5f * std::sin(angle), 0.02f * std::sin(angle * 2.0f)};
         model.updateSample(sample);
     }
@@ -373,6 +378,7 @@ void testWeakerFieldCompletesAfterRetry()
     for (const auto& raw : makeSphereSamples({}, correction)) {
         compass::CompassSample sample;
         sample.available = true;
+        sample.magnetometerAvailable = true;
         sample.rawMag = {raw.x * 0.5f, raw.y * 0.5f, raw.z * 0.5f};
         model.updateSample(sample);
     }
@@ -406,6 +412,13 @@ void testSensorFailuresAreVisible()
     require(model.sampleCount() == 0, "unavailable sensor does not count samples");
 
     sample.available = true;
+    sample.magnetometerAvailable = false;
+    sample.rawMag = {0.1f, 0.2f, 0.3f};
+    model.updateSample(sample);
+    require(model.sampleCount() == 0 && model.status().get() == sample.status,
+            "available six-axis data cannot calibrate using stale magnetic values");
+    sample.magnetometerAvailable = true;
+    sample.rawMag = {};
     model.updateSample(sample);
     require(model.status().get() == "No valid magnetic data", "zero magnetic data is diagnosed");
     sample.sequence = 1;
@@ -419,6 +432,7 @@ void testSensorFailuresAreVisible()
     model.updateSample(sample);
     require(model.status().get() == sample.status, "read failure is visible even with an unchanged sequence");
     sample.available = true;
+    sample.magnetometerAvailable = true;
     sample.sequence = 2;
     model.updateSample(sample);
     require(model.sampleCount() == 2, "capture continues after a read error");
@@ -456,6 +470,7 @@ void testIncompleteOctantCoverageIsRejected()
 
         compass::CompassSample sample;
         sample.available = true;
+        sample.magnetometerAvailable = true;
         sample.rawMag    = raw;
         model.updateSample(sample);
     }
@@ -480,6 +495,7 @@ void testRollingSampleWindowAcceptsLaterCoverage()
     model.start();
     compass::CompassSample sample;
     sample.available = true;
+    sample.magnetometerAvailable = true;
     for (uint32_t index = 0; index < 2048; ++index) {
         const float value = (index & 1U) == 0 ? -0.4f : 0.4f;
         sample.sequence   = index + 1;
@@ -508,6 +524,7 @@ void testInvalidSamplesAreIgnored()
     compass::CalibrationModel model;
     compass::CompassSample sample;
     sample.available = true;
+    sample.magnetometerAvailable = true;
 
     model.start();
     model.updateSample(sample);

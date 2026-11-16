@@ -22,7 +22,8 @@ public:
 
     bool required() const
     {
-        return !_model.calibration().valid;
+        const auto& sample = _compass_model.sample().get();
+        return sample.available && sample.magnetometerAvailable && !_model.calibration().valid;
     }
 
     uint32_t sampleCount() const

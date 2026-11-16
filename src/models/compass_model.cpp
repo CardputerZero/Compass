@@ -397,10 +397,12 @@ public:
 
         sample.source    = CompassDataSource::Mock;
         sample.available = true;
+        const char* no_mag           = std::getenv("COMPASS_MOCK_NO_MAGNETOMETER");
+        sample.magnetometerAvailable = !(no_mag && no_mag[0] == '1');
         sample.status    = "Mock IMU";
         sample.accel     = mapBmi270ToScreen(raw_accel);
         sample.gyro      = {std::cos(t * 0.8f) * 0.12f, std::sin(t * 0.65f) * 0.10f, 0.31f};
-        sample.rawMag    = raw_mag;
+        sample.rawMag                = sample.magnetometerAvailable ? raw_mag : Axis3{};
         return true;
     }
 };
@@ -418,11 +420,7 @@ public:
             return false;
         }
 
-        if (!findIioNode(preferredIioPath("COMPASS_BMM150_IIO_PATH", kBmm150IioDevicePath, "iio:device2"),
-                         isIioBmm150Node, kBmm150DeviceName, _device.mag_iio_path, _device.mag_display_name)) {
-            error = "BMM150 IIO device not found";
-            return false;
-        }
+        findMagnetometer();
 
         if (_device.display_name.empty()) {
             _device.display_name = kBmi270DeviceName;
@@ -438,13 +436,9 @@ public:
 
     bool read(uint32_t nowMs, CompassSample& sample, std::string& error) override
     {
-        (void)nowMs;
-
         const std::filesystem::path imu_root(_device.iio_path);
-        const std::filesystem::path mag_root(_device.mag_iio_path);
         double accel_scale = 0.0;
         double gyro_scale  = 0.0;
-        double magn_scale  = 0.0;
         if (!readDoubleFile(imu_root / kIioAccelScale, accel_scale)) {
             error = "Failed to read BMI270 accel scale";
             return false;
@@ -453,14 +447,10 @@ public:
             error = "Failed to read BMI270 gyro scale";
             return false;
         }
-        if (!readDoubleFile(mag_root / kIioMagnScale, magn_scale)) {
-            error = "Failed to read BMM150 magnetometer scale";
-            return false;
-        }
 
         sample.source    = CompassDataSource::Iio;
         sample.available = true;
-        sample.status    = _device.display_name + " + " + _device.mag_display_name;
+        sample.status    = _device.display_name;
 
         Axis3 raw_accel;
         Axis3 raw_gyro;
@@ -469,21 +459,51 @@ public:
             !readScaledAxis(imu_root, kIioAccelZRaw, accel_scale, raw_accel.z) ||
             !readScaledAxis(imu_root, kIioGyroXRaw, gyro_scale, raw_gyro.x) ||
             !readScaledAxis(imu_root, kIioGyroYRaw, gyro_scale, raw_gyro.y) ||
-            !readScaledAxis(imu_root, kIioGyroZRaw, gyro_scale, raw_gyro.z) ||
-            !readScaledAxis(mag_root, kIioMagnXRaw, magn_scale, sample.rawMag.x) ||
-            !readScaledAxis(mag_root, kIioMagnYRaw, magn_scale, sample.rawMag.y) ||
-            !readScaledAxis(mag_root, kIioMagnZRaw, magn_scale, sample.rawMag.z)) {
-            error = "Failed to read BMI270/BMM150 nine-axis data";
+            !readScaledAxis(imu_root, kIioGyroZRaw, gyro_scale, raw_gyro.z)) {
+            error = "Failed to read BMI270 six-axis data";
             return false;
         }
 
         sample.accel = mapBmi270ToScreen(raw_accel);
         sample.gyro  = mapBmi270ToScreen(raw_gyro);
+
+        // Missing or failed magnetic channels must not suppress live six-axis data.
+        if (_device.mag_iio_path.empty() &&
+            (!_mag_retry_started || nowMs - _last_mag_retry_ms >= kBackendRetryIntervalMs)) {
+            findMagnetometer();
+            _last_mag_retry_ms = nowMs;
+            _mag_retry_started = true;
+        }
+        if (!_device.mag_iio_path.empty()) {
+            const std::filesystem::path mag_root(_device.mag_iio_path);
+            double magn_scale = 0.0;
+            Axis3 raw_mag;
+            if (readDoubleFile(mag_root / kIioMagnScale, magn_scale) &&
+                readScaledAxis(mag_root, kIioMagnXRaw, magn_scale, raw_mag.x) &&
+                readScaledAxis(mag_root, kIioMagnYRaw, magn_scale, raw_mag.y) &&
+                readScaledAxis(mag_root, kIioMagnZRaw, magn_scale, raw_mag.z)) {
+                sample.rawMag                = raw_mag;
+                sample.magnetometerAvailable = true;
+                sample.status += " + " + _device.mag_display_name;
+            } else {
+                _device.mag_iio_path.clear();
+                _last_mag_retry_ms = nowMs;
+                _mag_retry_started = true;
+            }
+        }
         return true;
     }
 
 private:
     ImuDevice _device;
+    uint32_t _last_mag_retry_ms = 0;
+    bool _mag_retry_started     = false;
+
+    void findMagnetometer()
+    {
+        findIioNode(preferredIioPath("COMPASS_BMM150_IIO_PATH", kBmm150IioDevicePath, "iio:device2"), isIioBmm150Node,
+                    kBmm150DeviceName, _device.mag_iio_path, _device.mag_display_name);
+    }
 };
 #endif
 
@@ -605,6 +625,8 @@ CompassModel::CompassModel() : _impl(std::make_unique<Impl>())
 {
     if (!_impl->init()) {
         _sample.set(_impl->unavailableSample());
+    } else {
+        tick(0);
     }
 }
 
@@ -643,7 +665,7 @@ void CompassModel::tick(uint32_t nowMs)
 
     bool heading_valid = false;
     if (next.available) {
-        if (isUsableVector(next.rawMag)) {
+        if (next.magnetometerAvailable && isUsableVector(next.rawMag)) {
             const Axis3 calibrated_mag = next.source == CompassDataSource::Iio
                                              ? applyMagCalibration(next.rawMag, _impl->calibration)
                                              : next.rawMag;
@@ -654,7 +676,9 @@ void CompassModel::tick(uint32_t nowMs)
         heading_valid = fillPose(next);
     }
 
-    if (next.available && heading_valid && std::isfinite(next.headingDeg)) {
+    if (!next.available || !next.magnetometerAvailable) {
+        _impl->has_valid_heading = false;
+    } else if (heading_valid && std::isfinite(next.headingDeg)) {
         _impl->last_heading_deg  = next.headingDeg;
         _impl->has_valid_heading = true;
     } else if (next.available && _impl->has_valid_heading) {

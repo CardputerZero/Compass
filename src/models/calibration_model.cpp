@@ -573,7 +573,7 @@ void CalibrationModel::updateSample(const CompassSample& sample)
     if (_state.get() != CalibrationState::Running) {
         return;
     }
-    const std::string sensor_error = !sample.available
+    const std::string sensor_error = !sample.available || !sample.magnetometerAvailable
                                          ? (sample.status.empty() ? "Sensor unavailable" : sample.status)
                                          : (!isUsableVector(sample.rawMag) ? "No valid magnetic data" : "");
     if (sensor_error != _sensor_error) {

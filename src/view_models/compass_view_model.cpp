@@ -35,7 +35,7 @@ void CompassViewModel::onKey(uint32_t key)
             }
             break;
         case '7':
-            if (_info_expanded.get()) {
+            if (_info_expanded.get() && _model.sample().get().magnetometerAvailable) {
                 _router.push(PageId::Calibration);
             }
             break;

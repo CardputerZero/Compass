@@ -10,6 +10,7 @@ Compass app for M5Stack CardputerZero.
 - Calibrate hard-iron and cross-axis magnetic distortion with full 3D rotation
 - Save and load calibration data between launches within the same device boot
 - Require calibration on first use and confirm when calibration is saved
+- On devices without a magnetometer, show an optional entry notice, a tilt bubble, and live six-axis data
 
 ## Dependencies
 
@@ -100,13 +101,33 @@ Run the SDL build:
 Calibration data is saved to `/tmp/Compass/calibration.conf` by default for both
 SDL and CardputerZero builds. Launches within the same device boot reuse this
 data. When the device reboots and `/tmp` is cleared, calibration is required again.
-If no valid saved calibration exists, a required-calibration dialog appears.
+On devices with a working magnetometer, if no valid saved calibration exists,
+a required-calibration dialog appears.
 Press Enter to start, then rotate the device through every direction, away from
 metal and magnets. Calibration must pass the quality checks and be saved before
 entering the compass. Esc exits the app during this required flow.
 The completion dialog confirms that calibration was saved; press Enter to return
 to the compass. Later launches reuse the saved calibration until temporary data
 is cleared.
+Devices without a magnetometer skip calibration and show `Compass not supported`
+as an entry notice. Press `7` or Space to toggle `Don't show again`,
+then `8` or Enter to continue; Esc also dismisses the notice.
+The main view reuses the original tilt bubble, crosshairs, and sensor panels.
+Without a magnetometer, the original bubble, crosshairs, and travel are enlarged
+to 1.5 times their compass size.
+The original bottom-right `8` button expands/collapses the six-axis data; the
+two remaining sensor groups are vertically centered in the existing data area.
+The compass dial, cardinal directions, magnetic channels, and calibration controls
+are hidden. A magnetic read failure also preserves live six-axis data, and the magnetometer is retried every 5 seconds. Once it recovers, normal
+compass operation resumes, requiring calibration if no valid calibration is saved.
+If the six-axis sensor itself is unavailable, the sensor-error screen is shown.
+
+The entry-notice preference persists across launches and reboots at
+`$XDG_CONFIG_HOME/Compass/skip-six-axis-notice`, or
+`~/.config/Compass/skip-six-axis-notice` if `XDG_CONFIG_HOME` is unset.
+Set `COMPASS_PREFERENCES_PATH` to override the preference file for development.
+Delete that file to show the notice again. This preference is separate from the
+temporary magnetic calibration data.
 During calibration, coverage and captured sample count are shown below the progress
 bar. The first automatic check runs after 20 seconds; unsuccessful checks retry
 every 2 seconds while capture continues. Enter also attempts to finish and save.
@@ -119,6 +140,12 @@ across reboots):
 
 ```bash
 COMPASS_CALIBRATION_PATH=./calibration.conf ./dist/M5CardputerZero-Compass
+```
+
+Preview a device without a magnetometer using the SDL build:
+
+```bash
+COMPASS_MOCK_NO_MAGNETOMETER=1 ./dist/M5CardputerZero-Compass
 ```
 
 Key controls:
@@ -143,5 +170,13 @@ build and produces an `arm64` APPLaunch package.
 The generated package is written to `dist/`:
 
 ```text
-dist/m5cardputerzero-compass_0.2.4_m5stack1_arm64.deb
+dist/m5cardputerzero-compass_1.0.1_m5stack1_arm64.deb
 ```
+
+## 1.0.1
+
+- Continue the release version from `v1.0.0`; the CMake/package version is now `1.0.1`.
+- Keep real accelerometer and gyroscope data available on devices without BMM150.
+- Show a dismissible entry notice with a persistent don't-show-again option.
+- Reuse the original animated tilt bubble and sensor panels, hiding compass-only elements.
+- Preserve six-axis readings when magnetic reads fail, and retry magnetic detection automatically.

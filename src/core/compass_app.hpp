@@ -8,6 +8,7 @@
 #include "views/calibration_view.hpp"
 #include "views/compass_view.hpp"
 #include "views/help_view.hpp"
+#include "views/six_axis_notice_view.hpp"
 #include "views/view.hpp"
 #include <lvgl.h>
 #include <array>
@@ -42,6 +43,7 @@ private:
     CompassView _compass_view;
     CalibrationView _calibration_view;
     HelpView _help_view;
+    SixAxisNoticeView _six_axis_notice;
     lv_obj_t* _exit_hint      = nullptr;
     ViewModel* _current_vm    = nullptr;
     View* _current_view       = nullptr;

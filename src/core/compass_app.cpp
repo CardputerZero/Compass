@@ -31,6 +31,7 @@ CompassApp::CompassApp()
       _compass_view(_compass_vm),
       _calibration_view(_calibration_vm),
       _help_view(lv_screen_active()),
+      _six_axis_notice(lv_screen_active()),
       _view_models{&_compass_vm, &_calibration_vm},
       _views{&_compass_view, &_calibration_view}
 {
@@ -74,10 +75,16 @@ void CompassApp::start()
     }
     _route_observer_id = _router.currentPage().observe(this, onRouteChanged);
     setCurrentPage(_router.page());
+    const auto& sample = _compass_model.sample().get();
+    _six_axis_notice.update(sample.available && !sample.magnetometerAvailable);
 }
 
 void CompassApp::onKey(uint32_t key)
 {
+    if (_six_axis_notice.visible()) {
+        _six_axis_notice.onKey(key);
+        return;
+    }
     if (_calibration_vm.required() && !_help_view.visible()) {
         if (key == '\x1b') {
             _quit_requested = true;
@@ -153,7 +160,7 @@ bool CompassApp::onLvglKeyState(uint32_t lv_key, const char* utf8, bool pressed)
             _esc_pressed       = true;
             _esc_pressed_at    = lv_tick_get();
             _esc_long_consumed = false;
-            _esc_exit_armed    = _router.page() == PageId::Compass && !_help_view.visible();
+            _esc_exit_armed = _router.page() == PageId::Compass && !_help_view.visible() && !_six_axis_notice.visible();
 
             if (_esc_exit_armed) {
                 showExitHint();
@@ -217,7 +224,7 @@ void CompassApp::tick(uint32_t nowMs)
         _help_pressed = false;
     }
 #endif
-    if (_esc_exit_armed && (_router.page() != PageId::Compass || _help_view.visible())) {
+    if (_esc_exit_armed && (_router.page() != PageId::Compass || _help_view.visible() || _six_axis_notice.visible())) {
         _esc_exit_armed = false;
         hideExitHint();
     }
@@ -235,8 +242,18 @@ void CompassApp::tick(uint32_t nowMs)
     if (_current_vm) {
         _current_vm->tick(nowMs);
     }
+    const auto& sample = _compass_model.sample().get();
+    if (_router.page() == PageId::Calibration && (!sample.available || !sample.magnetometerAvailable)) {
+        _router.replace(PageId::Compass);
+    } else if (_router.page() == PageId::Compass && _calibration_vm.required()) {
+        _router.replace(PageId::Calibration);
+    }
     if (_current_view) {
         _current_view->tick(nowMs);
+    }
+    _six_axis_notice.update(sample.available && !sample.magnetometerAvailable);
+    if (_six_axis_notice.visible()) {
+        _help_view.hide();
     }
 }
 
